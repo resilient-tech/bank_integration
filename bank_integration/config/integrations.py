@@ -9,7 +9,7 @@ def get_data():
 			"items": [
 				{
 					"type": "doctype",
-					"name": "Bank Integration",
+					"name": "Bank Integration Settings",
 					"description": _("Bank integration settings"),
 				},
 			]

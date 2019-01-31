@@ -4,7 +4,7 @@
 
 import frappe
 
-from .bank_api import BankAPI, AnyEC
+from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
 
 # Selenium imports
 from selenium.webdriver.support.ui import WebDriverWait
@@ -89,7 +89,7 @@ class HDFCBankAPI(BankAPI):
                 option.click()
                 break
         else:
-            self.throw('The account number you entered in Bank Integration is incorrect', logout=True)
+            self.throw('The account number you entered in Bank Integration Settings is incorrect', logout=True)
 
         # Select party account
         beneficiary = self.br.find_element_by_id('fldToAcctNo')
@@ -193,7 +193,7 @@ class HDFCBankAPI(BankAPI):
                 option.click()
                 break
         else:
-            self.throw('The account number you entered in Bank Integration is incorrect', logout=True)
+            self.throw('The account number you entered in Bank Integration Settings is incorrect', logout=True)
 
         # Select party account
         beneficiary = self.br.find_element_by_id('fldBenefDetail')

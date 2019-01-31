@@ -33,7 +33,7 @@ frappe.ui.form.on('Payment Entry', {
             if (regex.test(str)) {
                 return true;
             }
-        
+
             e.preventDefault();
             return false;
         });
@@ -112,12 +112,12 @@ frappe.ui.form.on('Payment Entry', {
             frm.toggle_reqd(['comm_email', 'comm_mobile'], 0);
         }
     },
-    
+
     validate: function(frm) {
         if (frm.doc.docstatus === 0){
             if (frm.get_docfield('pay_now').hidden_due_to_dependency){
                 frm.set_value('pay_now', 0);
-            } else if (frm.doc.pay_now && !frm.doc.online_payment_status) { 
+            } else if (frm.doc.pay_now && !frm.doc.online_payment_status) {
                 frm.doc.online_payment_status = 'Unpaid';
             }
         }
@@ -149,7 +149,7 @@ frappe.ui.form.on('Payment Entry', {
                         });
                     });
                 });
-                
+
             }
         }
     }
@@ -166,7 +166,7 @@ function check_bank_integration(frm){
                     set_transfer_type(frm);
                 }
 
-                frappe.db.get_value('Bank Integration', {name: r.message.name, disabled: false}, 'name').then((r) => {
+                frappe.db.get_value('Bank Integration Settings', {name: r.message.name, disabled: false}, 'name').then((r) => {
                     if (!r.message) {
                         disable_pay_now(frm);
                     } else {
@@ -215,7 +215,7 @@ function set_transfer_type(frm) {
 }
 
 function get_contact_data(frm) {
-    if(frm.doc.party && frm.doc.comm_type && 
+    if(frm.doc.party && frm.doc.comm_type &&
     $.inArray(frm.doc.party_type, ['Supplier', 'Customer']) != -1){
         frappe.call({
 			method: "bank_integration.bank_integration.get_contact_data.get_contact_data",

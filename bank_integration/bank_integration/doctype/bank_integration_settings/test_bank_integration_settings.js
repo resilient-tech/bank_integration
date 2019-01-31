@@ -2,15 +2,15 @@
 // rename this file from _test_[name] to test_[name] to activate
 // and remove above this line
 
-QUnit.test("test: Bank Integration", function (assert) {
+QUnit.test("test: Bank Integration Settings", function (assert) {
 	let done = assert.async();
 
 	// number of asserts
 	assert.expect(1);
 
 	frappe.run_serially([
-		// insert a new Bank Integration
-		() => frappe.tests.make('Bank Integration', [
+		// insert a new Bank Integration Settings
+		() => frappe.tests.make('Bank Integration Settings', [
 			// values to be set
 			{key: 'value'}
 		]),

@@ -2,7 +2,7 @@
 # Copyright (c) 2018, Resilient Tech and contributors
 # For license information, please see license.txt
 
-from .hdfc_bank_api import HDFCBankAPI
+from bank_integration.bank_integration.api.hdfc_bank_api import HDFCBankAPI
 
 api_map = {
     "HDFC Bank": HDFCBankAPI,

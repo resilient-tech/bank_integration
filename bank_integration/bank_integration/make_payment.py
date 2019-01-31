@@ -5,13 +5,13 @@
 from __future__ import unicode_literals
 
 import frappe
-from .api import get_bank_api
+from bank_integration.bank_integration.api import get_bank_api
 
 @frappe.whitelist()
-def make_payment(from_account, to_account, transfer_type, amount, payment_desc, 
+def make_payment(from_account, to_account, transfer_type, amount, payment_desc,
 docname, comm_type=None, comm_value=None):
     bi_name = frappe.db.get_value('Bank Account', {'account': from_account}, 'name')
-    bi = frappe.get_doc('Bank Integration', bi_name)
+    bi = frappe.get_doc('Bank Integration Settings', bi_name)
 
     frappe.emit_js("frappe.msgprint('Logging in...');")
 
@@ -26,10 +26,10 @@ docname, comm_type=None, comm_value=None):
 
 @frappe.whitelist()
 def continue_payment_with_otp(otp):
-    bank = frappe._bank_session    
+    bank = frappe._bank_session
     bank.continue_payment_with_otp(otp)
 
 @frappe.whitelist()
 def cancel_payment():
-    bank = frappe._bank_session    
+    bank = frappe._bank_session
     bank.logout()
