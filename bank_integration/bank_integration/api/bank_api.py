@@ -42,7 +42,7 @@ class AnyEC:
         driver._found_element = None
         for fn in self.ecs:
             try:
-                if fn(driver): 
+                if fn(driver):
                     element = getattr(fn, 'locator', None)
                     if element:
                         driver._found_element = element

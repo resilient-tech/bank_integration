@@ -59,7 +59,7 @@ doctype_js = {
 # ------------
 
 # before_install = "bank_integration.install.before_install"
-# after_install = "bank_integration.install.after_install"
+after_install = "bank_integration.bank_integration.custom_fields.make_custom_fields"
 
 # Desk Notifications
 # ------------------
