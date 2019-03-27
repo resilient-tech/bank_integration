@@ -55,7 +55,7 @@ def make_custom_fields():
                 'depends_on': "eval:(doc.payment_type=='Pay' \
                     && doc.mode_of_payment!='Cash' && doc.paid_from \
                     && doc.party)",
-                'insert_after': 'party_name',
+                'insert_after': 'contact_email',
             },
             {
                 'fieldname': 'pay_now',
