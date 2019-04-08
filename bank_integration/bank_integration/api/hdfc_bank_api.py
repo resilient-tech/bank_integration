@@ -3,6 +3,7 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe.utils.file_manager import save_file
 
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
 
@@ -131,7 +132,8 @@ class HDFCBankAPI(BankAPI):
             frappe._bank_session = self
 
             frappe.publish_realtime('get_otp', {'mobile_no': mobile_no},
-                user=frappe.session.user)
+                user=frappe.session.user, doctype="Payment Entry",
+                docname=self.docname)
 
         elif 'impssuccess' in self.br._found_element:
             self.payment_success_action()
@@ -158,12 +160,11 @@ class HDFCBankAPI(BankAPI):
 
     def payment_success_action(self):
         # Get reference no. and screenshot << refno is the id
-        ss = frappe.new_doc('File')
-        ss.file_name = self.docname + ' Online Payment Screenshot.png'
-        ss.content = self.br.get_screenshot_as_png()
-        ss.attached_to_doctype = 'Payment Entry'
-        ss.attached_to_name = self.docname
-        ss.save()
+        save_file(
+            self.docname + ' Online Payment Screenshot.png',
+            self.br.get_screenshot_as_png(), 'Payment Entry',
+            self.docname, is_private=1
+        )
 
         if self.transfer_type == 'Transfer within the bank':
             ref_no = self.br.find_element_by_id('refno').text
@@ -171,7 +172,7 @@ class HDFCBankAPI(BankAPI):
             ref_no = self.br.find_element_by_class_name('clsreferenceno').text
 
         frappe.publish_realtime('payment_success', {'ref_no': ref_no},
-            user=frappe.session.user)
+            user=frappe.session.user, doctype="Payment Entry", docname=self.docname)
 
         self.logout()
 

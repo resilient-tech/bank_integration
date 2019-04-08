@@ -18,6 +18,7 @@ class BankAPI:
 
     def setup_browser(self):
         chrome_options = Options()
+        # Comment out for debugging
         chrome_options.add_argument("--headless")
 
         self.br = webdriver.Chrome(chrome_options=chrome_options)

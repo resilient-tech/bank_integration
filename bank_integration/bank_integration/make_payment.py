@@ -13,14 +13,17 @@ docname, comm_type=None, comm_value=None):
     bi_name = frappe.db.get_value('Bank Account', {'account': from_account}, 'name')
     bi = frappe.get_doc('Bank Integration Settings', bi_name)
 
-    frappe.emit_js("frappe.msgprint('Logging in...');")
+    frappe.emit_js("frappe.msgprint('Logging in...');", doctype="Payment Entry",
+        docname=docname)
 
     bank = get_bank_api(bi.bank_name, bi.username, bi.bank_account_no)
     bank.login(bi.get_password())
 
     bank.check_login()
 
-    frappe.emit_js("frappe.update_msgprint('Login Successful! Processing payment...');")
+    frappe.emit_js("frappe.update_msgprint('Login Successful! Processing payment...');",
+        doctype="Payment Entry",
+        docname=docname)
 
     bank.make_payment(to_account, transfer_type, amount, payment_desc, docname, comm_type, comm_value)
 

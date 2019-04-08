@@ -3,10 +3,6 @@
 
 frappe.ui.form.on('Payment Entry', {
 	onload: function(frm) {
-        // Set maxLength for fields
-        frm.fields_dict.payment_desc.$input[0].maxLength = 20;
-        frm.fields_dict.comm_mobile.$input[0].maxLength = 10;
-
         frappe.realtime.on("get_otp", function(data){
             frappe.hide_msgprint();
             var otp_dialog = frappe.prompt(
@@ -124,7 +120,10 @@ frappe.ui.form.on('Payment Entry', {
     },
 
     refresh: function(frm) {
-        if (frm.doc.docstatus === 0){
+        frm.fields_dict.payment_desc.$input[0].maxLength = 20;
+        frm.fields_dict.comm_mobile.$input[0].maxLength = 10;
+
+        if (frm.doc.docstatus === 0 && !frm.doc.__unsaved){
             if (frm.doc.pay_now && frm.doc.online_payment_status == 'Unpaid'){
                 var comm_value = '';
                 if (frm.doc.comm_type == 'Email') {
