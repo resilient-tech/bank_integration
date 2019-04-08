@@ -1,1 +1,1 @@
-bank_integration.patches.v0_1.create_custom_fields
+bank_integration.patches.v0_1.create_custom_fields  # 08-04-2019

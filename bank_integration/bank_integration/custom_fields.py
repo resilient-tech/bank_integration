@@ -156,5 +156,4 @@ def make_custom_fields():
         ]
     }
 
-    create_custom_fields(custom_fields) # first time, depends_on ignored
-    create_custom_fields(custom_fields) # second time, update doesn't care!
+    create_custom_fields(custom_fields)
