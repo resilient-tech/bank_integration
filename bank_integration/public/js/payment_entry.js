@@ -62,6 +62,9 @@ frappe.ui.form.on('Payment Entry', {
     },
 
     pay_now: function(frm) {
+        if (frm.doc.payment_type != 'Pay'){
+            return;
+        }
         set_bank_name_and_ac(frm);
         if (frm.doc.pay_now) {
             // Set reference details
