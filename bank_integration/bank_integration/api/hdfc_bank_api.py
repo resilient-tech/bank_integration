@@ -45,6 +45,8 @@ class HDFCBankAPI(BankAPI):
         ).click()
 
         self.br.quit()
+        if hasattr(self, 'payment_uid'):
+            frappe._bank_session.pop(self.payment_uid, None)
 
     def check_login(self, logout=False):
         WebDriverWait(self.br, self.timeout).until(AnyEC(
@@ -63,12 +65,13 @@ class HDFCBankAPI(BankAPI):
             self.logout()
 
     def make_payment(self, to_account, transfer_type, amount, payment_desc,
-    docname, comm_type='None', comm_value='None'):
+    docname, payment_uid, comm_type='None', comm_value='None'):
         WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
             (By.PARTIAL_LINK_TEXT, 'Third Party Transfer')
             )).find_element_by_tag_name('div').click()
 
         self.docname = docname
+        self.payment_uid = payment_uid
         self.transfer_type = transfer_type
         if transfer_type == 'Transfer within the bank':
             self.make_payment_within_bank(to_account, amount, payment_desc)
@@ -129,9 +132,16 @@ class HDFCBankAPI(BankAPI):
 
             self.br.find_element_by_name('fldOtp').click()
 
-            frappe._bank_session = self
+            if not hasattr(frappe, '_bank_session'):
+                frappe._bank_session = {self.payment_uid: self}
+            else:
+                if not isinstance(frappe._bank_session, dict):
+                    frappe._bank_session = {}
 
-            frappe.publish_realtime('get_otp', {'mobile_no': mobile_no},
+                frappe._bank_session[self.payment_uid] = self
+
+            frappe.publish_realtime('get_otp',
+                {'mobile_no': mobile_no, 'payment_uid': self.payment_uid},
                 user=frappe.session.user, doctype="Payment Entry",
                 docname=self.docname)
 
@@ -171,7 +181,8 @@ class HDFCBankAPI(BankAPI):
         else:
             ref_no = self.br.find_element_by_class_name('clsreferenceno').text
 
-        frappe.publish_realtime('payment_success', {'ref_no': ref_no},
+        frappe.publish_realtime('payment_success',
+            {'ref_no': ref_no, 'payment_uid': self.payment_uid},
             user=frappe.session.user, doctype="Payment Entry", docname=self.docname)
 
         self.logout()

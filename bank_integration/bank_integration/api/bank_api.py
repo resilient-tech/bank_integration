@@ -17,11 +17,12 @@ class BankAPI:
         self.account_no = account_no
 
     def setup_browser(self):
-        chrome_options = Options()
+        options = Options()
         # Comment out for debugging
-        chrome_options.add_argument("--headless")
+        options.add_argument("--headless")
+        options.add_experimental_option('w3c', False)
 
-        self.br = webdriver.Chrome(chrome_options=chrome_options)
+        self.br = webdriver.Chrome(options=options)
         self.timeout = 30 # Request timeout in secs.
 
     def throw(self, message, logout=False):
