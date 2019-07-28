@@ -153,6 +153,15 @@ def make_custom_fields():
                 'insert_after': 'paid_from',
                 'print_hide': 1,
             }
+        ],
+        'Employee': [
+            {
+                'fieldname': 'bank',
+                'label': 'Bank',
+                'fieldtype': 'Link',
+                'options': 'Bank',
+                'insert_after': 'bank_name'
+            }
         ]
     }
 

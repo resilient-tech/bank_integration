@@ -9,10 +9,16 @@ from frappe.contacts.doctype.contact.contact import get_default_contact
 
 @frappe.whitelist()
 def get_contact_data(party_type, party, comm_type):
-    contact_name = get_default_contact(party_type, party)
-    if contact_name:
-        contact = frappe.get_doc('Contact', contact_name)
+    if party_type != 'Employee':
+        contact_name = get_default_contact(party_type, party)
+        if contact_name:
+            contact = frappe.get_doc('Contact', contact_name)
+            if comm_type == 'Email':
+                return contact.email_id
+            elif comm_type == 'Mobile':
+                return contact.mobile_no
+    else:
         if comm_type == 'Email':
-            return contact.email_id
+            return frappe.get_value(party_type, party, 'personal_email')
         elif comm_type == 'Mobile':
-            return contact.mobile_no
+            return frappe.get_value(party_type, party, 'cell_number')

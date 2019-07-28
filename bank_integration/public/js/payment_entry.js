@@ -62,6 +62,10 @@ frappe.ui.form.on('Payment Entry', {
     },
 
     pay_now: function(frm) {
+        if (!frm.doc.paid_from_bank) {
+            check_bank_integration(frm);
+        }
+
         if (frm.doc.payment_type != 'Pay'){
             return;
         }
@@ -192,7 +196,7 @@ function disable_pay_now(frm) {
 }
 
 function set_bank_name_and_ac(frm) {
-    if($.inArray(frm.doc.party_type, ['Supplier', 'Customer']) != -1 &&
+    if($.inArray(frm.doc.party_type, ['Supplier', 'Customer', 'Employee']) != -1 &&
         frm.doc.party && frm.doc.pay_now) {
             frappe.db.get_value(frm.doc.party_type, frm.doc.party, ['bank', 'bank_ac_no'])
             .then((r) => {
@@ -218,7 +222,7 @@ function set_transfer_type(frm) {
 
 function get_contact_data(frm) {
     if(frm.doc.party && frm.doc.comm_type &&
-    $.inArray(frm.doc.party_type, ['Supplier', 'Customer']) != -1){
+    $.inArray(frm.doc.party_type, ['Supplier', 'Customer', 'Employee']) != -1){
         frappe.call({
 			method: "bank_integration.bank_integration.get_contact_data.get_contact_data",
             args: {party_type: frm.doc.party_type, party: frm.doc.party,
