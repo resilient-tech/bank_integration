@@ -68,6 +68,7 @@ frappe.ui.form.on('Payment Entry', {
 
     party: function(frm) {
         set_bank_name_and_ac(frm);
+        get_contact_data(frm);
     },
 
     pay_now: function(frm) {
