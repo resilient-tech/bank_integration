@@ -45,7 +45,7 @@ class HDFCBankAPI(BankAPI):
         ).click()
 
         self.br.quit()
-        if hasattr(self, 'payment_uid'):
+        if hasattr(self, 'payment_uid') and hasattr(frappe, '_bank_session'):
             frappe._bank_session.pop(self.payment_uid, None)
 
     def check_login(self, logout=False):
