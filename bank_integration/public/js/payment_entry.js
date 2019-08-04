@@ -25,6 +25,7 @@ frappe.ui.form.on('Payment Entry', {
                     method: "bank_integration.bank_integration.make_payment.cancel_payment",
                     args: {payment_uid: frm.payment_uid}
                 });
+                delete frm.payment_uid;
             });
         });
 
@@ -55,6 +56,7 @@ frappe.ui.form.on('Payment Entry', {
                     frm.savesubmit();
                 });
             }, 1000);
+            delete frm.payment_uid;
         });
     },
 
