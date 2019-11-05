@@ -26,6 +26,9 @@ docname, payment_uid, comm_type=None, comm_value=None):
 
     emit_js("frappe.update_msgprint('Login Successful! Processing payment...');")
 
+    if comm_value:
+        comm_value = comm_value.replace(" ", "")
+
     bank.make_payment(to_account, transfer_type, amount, payment_desc, docname,
         payment_uid, comm_type, comm_value)
 

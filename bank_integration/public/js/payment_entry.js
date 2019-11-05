@@ -245,7 +245,7 @@ function get_contact_data(frm) {
 			callback: function(r){
 				if (r.message) {
                     if (frm.doc.comm_type == 'Email'){
-                        frm.set_value('comm_email', r.message);
+                        frm.set_value('comm_email', r.message.trim());
                     } else if (frm.doc.comm_type == 'Mobile'){
                         frm.set_value('comm_mobile', r.message.replace(/\s/g,'').slice(-10));
                     }
