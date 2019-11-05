@@ -11,7 +11,7 @@ from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException, NoAlertPresentException
+from selenium.common.exceptions import NoAlertPresentException
 
 class HDFCBankAPI(BankAPI):
     def __init__(self, username, account_no):
@@ -34,7 +34,7 @@ class HDFCBankAPI(BankAPI):
 
         try:
             self.br.find_element_by_id('chkLogin').click()
-        except NoSuchElementException:
+        except:
             pass
 
         pass_input.submit()
