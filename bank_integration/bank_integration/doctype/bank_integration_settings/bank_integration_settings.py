@@ -13,8 +13,8 @@ class BankIntegrationSettings(Document):
 			frappe.emit_js("frappe.msgprint('Checking credentials');",
 			doctype=self.doctype, docname=self.name)
 
-			bank = get_bank_api(self.bank_name, self.username, self.bank_account_no)
-			bank.login(self.password)
+			bank = get_bank_api(self.bank_name)
+			bank.login(self.username, self.password)
 
 			frappe.emit_js("frappe.update_msgprint('Logging in...');",
 			doctype=self.doctype, docname=self.name)

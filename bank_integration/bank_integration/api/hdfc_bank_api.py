@@ -14,17 +14,14 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoAlertPresentException
 
 class HDFCBankAPI(BankAPI):
-    def __init__(self, username, account_no):
-        super(HDFCBankAPI, self).__init__(username, account_no)
-
-    def login(self, password):
+    def login(self, username, password):
         self.setup_browser()
         self.br.get('https://mobilebanking.hdfcbank.com/mobilebanking/')
 
         cust_id = WebDriverWait(self.br, self.timeout).until(
             EC.visibility_of_element_located((By.NAME, 'fldLoginUserId'))
         )
-        cust_id.send_keys(self.username)
+        cust_id.send_keys(username)
         cust_id.submit()
 
         pass_input = WebDriverWait(self.br, self.timeout).until(
@@ -45,8 +42,6 @@ class HDFCBankAPI(BankAPI):
         ).click()
 
         self.br.quit()
-        if hasattr(self, 'payment_uid') and hasattr(frappe, '_bank_session'):
-            frappe._bank_session.pop(self.payment_uid, None)
 
     def check_login(self, logout=False):
         WebDriverWait(self.br, self.timeout).until(AnyEC(
@@ -64,7 +59,7 @@ class HDFCBankAPI(BankAPI):
         if logout:
             self.logout()
 
-    def make_payment(self, to_account, transfer_type, amount, payment_desc,
+    def make_payment(self, account_no, to_account, transfer_type, amount, payment_desc,
     docname, payment_uid, comm_type='None', comm_value='None'):
         WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
             (By.PARTIAL_LINK_TEXT, 'Third Party Transfer')
@@ -74,11 +69,11 @@ class HDFCBankAPI(BankAPI):
         self.payment_uid = payment_uid
         self.transfer_type = transfer_type
         if transfer_type == 'Transfer within the bank':
-            self.make_payment_within_bank(to_account, amount, payment_desc)
+            self.make_payment_within_bank(account_no, to_account, amount, payment_desc)
         elif transfer_type == 'Transfer to other bank (NEFT)':
-            self.make_neft_payment(to_account, amount, payment_desc, comm_type, comm_value)
+            self.make_neft_payment(account_no, to_account, amount, payment_desc, comm_type, comm_value)
 
-    def make_payment_within_bank(self, to_account, amount, payment_desc):
+    def make_payment_within_bank(self, account_no, to_account, amount, payment_desc):
 
         WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
             (By.PARTIAL_LINK_TEXT, 'Transfer within the bank')
@@ -89,7 +84,7 @@ class HDFCBankAPI(BankAPI):
             EC.visibility_of_element_located((By.ID, 'fldFromAcctNo')))
 
         for option in from_account.find_elements_by_tag_name('option'):
-            if self.account_no in option.get_attribute('value'):
+            if account_no in option.get_attribute('value'):
                 option.click()
                 break
         else:
@@ -132,22 +127,20 @@ class HDFCBankAPI(BankAPI):
 
             self.br.find_element_by_name('fldOtp').click()
 
-            if not hasattr(frappe, '_bank_session'):
-                frappe._bank_session = {self.payment_uid: self}
-            else:
-                if not isinstance(frappe._bank_session, dict):
-                    frappe._bank_session = {}
-
-                frappe._bank_session[self.payment_uid] = self
+            frappe._bank_session = self
 
             frappe.publish_realtime('get_otp',
-                {'mobile_no': mobile_no, 'payment_uid': self.payment_uid},
+                {
+                    'mobile_no': mobile_no,
+                    'payment_uid': self.payment_uid,
+                    'api_name': self.__class__.__name__,
+                    'resume_info': self.get_resume_info()
+                },
                 user=frappe.session.user, doctype="Payment Entry",
                 docname=self.docname)
 
         elif 'impssuccess' in self.br._found_element:
             self.payment_success_action()
-
 
     def continue_payment_with_otp(self, otp):
         WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
@@ -187,8 +180,11 @@ class HDFCBankAPI(BankAPI):
 
         self.logout()
 
+        if hasattr(frappe, '_bank_session'):
+            del frappe._bank_session
 
-    def make_neft_payment(self, to_account, amount, payment_desc, comm_type, comm_value):
+
+    def make_neft_payment(self, account_no, to_account, amount, payment_desc, comm_type, comm_value):
         WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
             (By.PARTIAL_LINK_TEXT, 'Transfer to other bank')
             )).find_element_by_tag_name('div').click()
@@ -201,7 +197,7 @@ class HDFCBankAPI(BankAPI):
             self.throw('Unable to access NEFT services at the moment. Please try again later.', logout=True)
 
         for option in from_account.find_elements_by_tag_name('option'):
-            if self.account_no in option.get_attribute('value'):
+            if account_no in option.get_attribute('value'):
                 option.click()
                 break
         else:

@@ -8,5 +8,9 @@ api_map = {
     "HDFC Bank": HDFCBankAPI,
 }
 
-def get_bank_api(bank_name, username, account_no):
-    return api_map.get(bank_name)(username, account_no)
+def get_bank_api(bank_name=None, api_name=None):
+    if api_name:
+        return globals()[api_name]()
+
+    elif bank_name:
+        return api_map.get(bank_name)()

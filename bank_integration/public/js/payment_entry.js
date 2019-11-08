@@ -4,28 +4,37 @@
 frappe.ui.form.on('Payment Entry', {
 	onload: function(frm) {
         frappe.realtime.on("get_otp", function(data){
-            if (data.payment_uid != frm.payment_uid) {
+            if (data.payment_uid != frm.payment_uid || frm.otp_requested) {
                 return;
             }
 
+            frm.otp_requested = true;
             frappe.hide_msgprint();
             var otp_dialog = frappe.prompt(
                 {fieldtype: 'Data', label: 'One Time Password',
                  fieldname: 'otp', reqd: 1,
                  description: `A one time password has been sent to your Mobile
                  Number <strong>${data.mobile_no}</strong> for further authentication.`},
-            function(data){
+            function(_data){
                 frappe.call({
                     method: "bank_integration.bank_integration.make_payment.continue_payment_with_otp",
-                    args: {otp: data.otp, payment_uid: frm.payment_uid},
+                    args: {
+                        otp: _data.otp,
+                        api_name: data.api_name,
+                        payment_uid: frm.payment_uid,
+                        transfer_type: frm.doc.transfer_type,
+                        docname: frm.doc.name,
+                        resume_info: data.resume_info},
                 });
+                delete frm.otp_requested;
             }, 'Enter OTP');
             otp_dialog.set_secondary_action(function(){
                 frappe.call({
                     method: "bank_integration.bank_integration.make_payment.cancel_payment",
-                    args: {payment_uid: frm.payment_uid}
+                    args: {api_name: data.api_name, resume_info: data.resume_info}
                 });
                 delete frm.payment_uid;
+                delete frm.otp_requested;
             });
         });
 

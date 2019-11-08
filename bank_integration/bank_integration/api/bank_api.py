@@ -12,18 +12,31 @@ from selenium.webdriver.chrome.options import Options
 class BankAPI:
     __metaclass__ = ABCMeta
 
-    def __init__(self, username, account_no):
-        self.username = username
-        self.account_no = account_no
+    def __init__(self):
+        self.timeout = 30 # Request timeout in secs.
 
-    def setup_browser(self):
+    def get_options(self):
         options = Options()
         # Comment out for debugging
         options.add_argument("--headless")
         options.add_experimental_option('w3c', False)
 
-        self.br = webdriver.Chrome(options=options)
-        self.timeout = 30 # Request timeout in secs.
+        return options
+
+    def setup_browser(self):
+        self.br = webdriver.Chrome(options=self.get_options(), port=12345)
+
+    def get_resume_info(self):
+        return {
+            'executor_url': self.br.command_executor._url,
+            'session_id': self.br.session_id
+        }
+
+    def resume_session(self, executor_url, session_id):
+        self.br = webdriver.Remote(command_executor=executor_url,
+            options=self.get_options())
+        self.br.close()
+        self.br.session_id = session_id
 
     def throw(self, message, logout=False):
         frappe.emit_js("frappe.hide_msgprint();")
