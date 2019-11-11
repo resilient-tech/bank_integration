@@ -115,6 +115,7 @@ class HDFCBankAPI(BankAPI):
         ))
 
         if not self.br._found_element:
+            frappe.emit_js("console.error(`" + self.br.page_source + "`);")
             self.throw('Timed out waiting for element to be present', logout=True)
 
 
@@ -153,6 +154,7 @@ class HDFCBankAPI(BankAPI):
         ))
 
         if not self.br._found_element:
+            frappe.emit_js("console.error(`" + self.br.page_source + "`);")
             self.throw('Timed out waiting for element to be present', logout=True)
 
         if 'rsaAuthFailure' in self.br._found_element:
