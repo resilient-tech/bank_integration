@@ -8,17 +8,17 @@ import frappe
 from frappe.contacts.doctype.contact.contact import get_default_contact
 
 @frappe.whitelist()
-def get_contact_data(party_type, party, comm_type):
+def get_contact_data(party_type, party):
     if party_type != 'Employee':
         contact_name = get_default_contact(party_type, party)
         if contact_name:
             contact = frappe.get_doc('Contact', contact_name)
-            if comm_type == 'Email':
-                return contact.email_id
-            elif comm_type == 'Mobile':
-                return contact.mobile_no
+            return {
+                'email': contact.email_id,
+                'mobile': contact.mobile_no
+            }
     else:
-        if comm_type == 'Email':
-            return frappe.get_value(party_type, party, 'personal_email')
-        elif comm_type == 'Mobile':
-            return frappe.get_value(party_type, party, 'cell_number')
+        data = frappe._dict()
+        data.email, data.mobile = frappe.get_value(party_type, party,
+            ('personal_email', 'cell_number'))
+        return data

@@ -148,8 +148,10 @@ frappe.ui.form.on('Payment Entry', {
     },
 
     refresh: function(frm) {
-        frm.fields_dict.payment_desc.$input[0].maxLength = 20;
-        frm.fields_dict.comm_mobile.$input[0].maxLength = 10;
+        if (frm.doc.docstatus === 0) {
+            frm.fields_dict.payment_desc.$input[0].maxLength = 20;
+            frm.fields_dict.comm_mobile.$input[0].maxLength = 10;
+        }
 
         if (frm.doc.docstatus === 0 && !frm.doc.__unsaved){
             if (frm.doc.pay_now && frm.doc.online_payment_status == 'Unpaid'){
@@ -182,9 +184,95 @@ frappe.ui.form.on('Payment Entry', {
 
             }
         }
-    }
 
+        setup_sms(frm);
+    }
 });
+
+
+function setup_sms(frm) {
+    if (frm.doc.docstatus===1 && !in_list(["Cancelled", "Closed"], frm.doc.status)
+            && frm.doc.payment_type === "Pay"){
+        frm.page.add_menu_item('Send SMS', function() {
+            var d = new frappe.ui.Dialog({
+                title: 'Send SMS',
+                width: 400,
+                fields: [
+                    {fieldname:'number', fieldtype:'Data', label:'Mobile Number', reqd:1},
+                    {fieldname:'message', fieldtype:'Text', label:'Message', reqd:1},
+                    {fieldname:'send', fieldtype:'Button', label:'Send'}
+                ]
+            });
+
+            d.fields_dict.send.input.onclick = function() {
+                var btn = d.fields_dict.send.input;
+                var v = d.get_values();
+                console.log(v);
+                if(v) {
+                    $(btn).set_working();
+                    frappe.call({
+                        method: "frappe.core.doctype.sms_settings.sms_settings.send_sms",
+                        args: {
+                            receiver_list: [v.number],
+                            msg: v.message
+                        },
+                        callback: function(r) {
+                            $(btn).done_working();
+                            if(r.exc) {frappe.msgprint(r.exc); return; }
+                            d.hide();
+                        }
+                    });
+                }
+            }
+
+            let paid_to_message = 'you';
+            if (frm.doc.pay_now) {
+                paid_to_message = `your ${frm.doc.party_bank.trim()} account no. **`
+                    + frm.doc.party_bank_ac_no.slice(-4);
+            }
+
+            let allocation = [];
+            for (let i of frm.doc.references) {
+                if (i.reference_doctype === "Purchase Invoice" && i.bill_no) {
+                    if (i.allocated_amount === i.total_amount) {
+                        allocation.push(i.bill_no);
+                    } else if (i.allocated_amount) {
+                        allocation.push(i.bill_no
+                            + ` (${i.allocated_amount} ${frm.doc.paid_to_account_currency})`);
+                    }
+                }
+            }
+
+            let allocation_message = ''
+            if (allocation.length) {
+                allocation_message = ` against Bill No${ (allocation.length > 1) ? "s" : ""}. ${allocation.join(", ")}`;
+                if (allocation.length === 1 && allocation_message.endsWith(")")) {
+                    allocation_message = allocation_message.slice(0, allocation_message.lastIndexOf(" ("));
+                }
+            }
+
+            let mode = frm.doc.mode_of_payment || "Bank Transfer";
+            mode = mode.replace("Wire Transfer", "Bank Transfer");
+
+            let ref_message = "."
+            if (frm.doc.reference_no && frm.doc.reference_no.replace("-", "")) {
+                ref_message = ` (Ref. No. ${frm.doc.reference_no})`
+            }
+
+            d.set_values({
+                'number': frm.doc.comm_mobile,
+                'message': `An amount of ${frm.doc.paid_amount.toFixed(2)}`
+                    +  ` ${frm.doc.paid_to_account_currency} has been paid to `
+                    + paid_to_message + allocation_message
+                    + ` via ${mode}${ref_message}`
+            });
+
+            d.show();
+        })
+    }
+}
+
+
 
 function check_bank_integration(frm){
     if(frm.doc.payment_type == 'Pay' && frm.doc.paid_from) {
@@ -253,10 +341,12 @@ function get_contact_data(frm) {
                 comm_type: frm.doc.comm_type},
 			callback: function(r){
 				if (r.message) {
-                    if (frm.doc.comm_type == 'Email'){
-                        frm.set_value('comm_email', r.message.trim());
-                    } else if (frm.doc.comm_type == 'Mobile'){
-                        frm.set_value('comm_mobile', r.message.replace(/\s/g,'').slice(-10));
+                    if (r.message.email) {
+                        frm.set_value('comm_email', r.message.email.trim());
+                    }
+                    if (r.message.mobile) {
+                        frm.set_value('comm_mobile',
+                            r.message.mobile.replace(/\s/g,'').slice(-10));
                     }
                 }
 			},
