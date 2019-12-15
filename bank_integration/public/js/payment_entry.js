@@ -234,7 +234,7 @@ function setup_sms(frm) {
             let allocation = [];
             for (let i of frm.doc.references) {
                 if (i.reference_doctype === "Purchase Invoice" && i.bill_no) {
-                    if (i.allocated_amount === i.total_amount) {
+                    if (i.allocated_amount === i.total_amount && i.allocated_amount > 0) {
                         allocation.push(i.bill_no);
                     } else if (i.allocated_amount) {
                         allocation.push(i.bill_no
