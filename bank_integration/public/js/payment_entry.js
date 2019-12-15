@@ -227,7 +227,7 @@ function setup_sms(frm) {
 
             let paid_to_message = 'you';
             if (frm.doc.pay_now) {
-                paid_to_message = `your ${frm.doc.party_bank.trim()} account no. **`
+                paid_to_message = `your ${frm.doc.party_bank.trim()} a/c ending **`
                     + frm.doc.party_bank_ac_no.slice(-4);
             }
 
@@ -259,8 +259,25 @@ function setup_sms(frm) {
                 ref_message = ` (Ref. No. ${frm.doc.reference_no})`
             }
 
+            let mobile_no = frm.doc.comm_mobile;
+            if (!mobile_no && frm.doc.contact_person) {
+                frappe.call({
+                    method: "frappe.core.doctype.sms_settings.sms_settings.get_contact_number",
+                    args: {
+                        contact_name: frm.doc.contact_person,
+                        ref_doctype: frm.doc.party_type,
+                        ref_name: frm.doc.party
+                    },
+                    callback: function(r) {
+                        if(r.exc) { frappe.msgprint(r.exc); return; }
+                        mobile_no = r.message;
+                    }
+                });
+            }
+
+
             d.set_values({
-                'number': frm.doc.comm_mobile,
+                'number': mobile_no,
                 'message': `An amount of ${frm.doc.paid_amount.toFixed(2)}`
                     +  ` ${frm.doc.paid_to_account_currency} has been paid to `
                     + paid_to_message + allocation_message
