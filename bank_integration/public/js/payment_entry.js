@@ -234,12 +234,8 @@ function setup_sms(frm) {
             let allocation = [];
             for (let i of frm.doc.references) {
                 if (i.reference_doctype === "Purchase Invoice" && i.bill_no) {
-                    if (i.allocated_amount === i.total_amount && i.allocated_amount > 0) {
-                        allocation.push(i.bill_no);
-                    } else if (i.allocated_amount) {
-                        allocation.push(i.bill_no
-                            + ` (${i.allocated_amount} ${frm.doc.paid_to_account_currency})`);
-                    }
+                    allocation.push(i.bill_no
+                        + ` (${i.allocated_amount} ${frm.doc.paid_to_account_currency})`);
                 }
             }
 
@@ -282,6 +278,7 @@ function setup_sms(frm) {
                     +  ` ${frm.doc.paid_to_account_currency} has been paid to `
                     + paid_to_message + allocation_message
                     + ` via ${mode}${ref_message}`
+                    + `\n\n- ${frm.doc.company}`
             });
 
             d.show();
