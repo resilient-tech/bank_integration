@@ -17,9 +17,9 @@ class BankAPI:
 
     def get_options(self):
         options = Options()
-        # Comment out for debugging
-        options.add_argument("--headless")
-        options.add_experimental_option('w3c', False)
+        if not frappe.conf.developer_mode:
+            options.add_argument("--headless")
+            options.add_experimental_option('w3c', False)
 
         return options
 
