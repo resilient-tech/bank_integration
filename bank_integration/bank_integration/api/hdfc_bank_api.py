@@ -2,242 +2,243 @@
 # Copyright (c) 2018, Resilient Tech and contributors
 # For license information, please see license.txt
 
+import time
+
 import frappe
 from frappe.utils.file_manager import save_file
 
+import bank_integration
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
 
 # Selenium imports
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoAlertPresentException
+from selenium.common.exceptions import NoAlertPresentException, NoSuchElementException, TimeoutException
+from selenium.webdriver.common.keys import Keys
 
 class HDFCBankAPI(BankAPI):
-    def login(self, username, password):
+    def init(self):
+        self.bank_name = 'HDFC Bank'
+
+    def login(self):
+        self.show_msg('Attempting login...')
         self.setup_browser()
-        self.br.get('https://mobilebanking.hdfcbank.com/mobilebanking/')
+        self.br.get('https://netbanking.hdfcbank.com/netbanking/')
 
-        cust_id = WebDriverWait(self.br, self.timeout).until(
-            EC.visibility_of_element_located((By.NAME, 'fldLoginUserId'))
-        )
-        cust_id.send_keys(username)
-        cust_id.submit()
+        self.switch_to_frame('login_page')
+        cust_id = self.get_element('fldLoginUserId')
+        cust_id.send_keys(self.username, Keys.ENTER)
 
-        pass_input = WebDriverWait(self.br, self.timeout).until(
-            EC.visibility_of_element_located((By.ID, 'upass'))
-        )
-        pass_input.send_keys(password)
+        self.get_element('chkrsastu', 'id').click()
 
         try:
-            self.br.find_element_by_id('chkLogin').click()
-        except:
+            self.get_element('fldCaptcha', timeout=1, throw=False)
+        except TimeoutException:
+            pass
+        else:
+            self.throw('HDFC Netbanking is asking for a CAPTCHA, which we don\'t currently support. Exiting.')
+
+        pass_input = self.get_element('fldPassword')
+        pass_input.send_keys(self.password, Keys.ENTER)
+
+        self.wait_until(AnyEC(
+            EC.visibility_of_element_located((By.XPATH,
+                "//td/span[text()[contains(.,'The Customer ID/IPIN (Password) is invalid.')]]")),
+            EC.visibility_of_element_located((By.NAME, 'fldOldPass')),
+            EC.visibility_of_element_located((By.NAME, 'fldMobile')),
+            EC.visibility_of_element_located((By.NAME, 'common_menu1'))
+        ), throw='ignore')
+
+        if not self.br._found_element:
+            self.handle_login_error()
+
+        elif 'fldOldPass' == self.br._found_element[-1]:
+            self.throw(('The password you\'ve set has expired. '
+                'Please set a new password manually and update the same in Bank Integration Settings.'))
+
+        elif 'is invalid' in self.br._found_element[-1]:
+            self.throw('The password you\'ve set in Bank Integration Settings is incorrect.')
+
+        elif 'fldMobile' == self.br._found_element[-1]:
+            self.process_otp()
+        else:
+            self.login_success()
+
+    def process_otp(self):
+        mobile_no = email_id = None
+        self.get_element('fldMobile', now=True).click()
+
+        try:
+            mobile_no = self.get_element('//*[@name="fldMobile"]/../following-sibling::td[last()]', 'xpath',
+                now=True, throw=False).text
+        except NoSuchElementException:
             pass
 
-        pass_input.submit()
+        try:
+            self.get_element('fldEmailid', now=True, throw=False).click()
+            email_id = self.get_element('//*[@name="fldEmailid"]/../following-sibling::td[last()]', 'xpath',
+                now=True, throw=False).text
+        except NoSuchElementException:
+            pass
 
-    def logout(self):
-        WebDriverWait(self.br, self.timeout).until(
-            EC.visibility_of_element_located((By.CLASS_NAME, 'logoutIco'))
-        ).click()
+        self.br.execute_script('return fireOtp();')
 
-        self.br.quit()
+        frappe.publish_realtime('get_bank_otp', {
+            'mobile_no': mobile_no,
+            'email_id': email_id,
+            'uid': self.uid,
+            'bank_name': self.bank_name,
+            'resume_info': self.get_resume_info(),
+            'data': self.data,
+            'logged_in': self.logged_in
+        }, user=frappe.session.user, doctype=self.doctype, docname=self.docname)
 
-    def check_login(self, logout=False):
-        WebDriverWait(self.br, self.timeout).until(AnyEC(
-            EC.alert_is_present(),
-            EC.visibility_of_element_located((By.CLASS_NAME, 'logoutIco'))
-        ))
+        setattr(bank_integration, self.uid, self)
 
+    def submit_otp(self, otp):
+        otp_field = self.get_element('fldOtpToken')
+        otp_field.send_keys(otp)
+        self.br.execute_script('return authOtp();')
+
+    def continue_login(self, otp):
+        self.submit_otp(otp)
+        try:
+            self.get_element('common_menu1', throw=False)
+        except TimeoutException:
+            self.handle_login_error()
+        else:
+            self.login_success()
+
+    def handle_login_error(self):
         try:
             alert = self.br.switch_to.alert.text
         except NoAlertPresentException:
-            pass
+            self.throw('Login failed')
         else:
             self.throw(alert)
 
-        if logout:
+    def login_success(self):
+        self.logged_in = True
+
+        if self.doctype == 'Bank Integration Settings':
+            self.show_msg('Credentials verified successfully!')
+            self.emit_js("setTimeout(() => {frappe.hide_msgprint()}, 2000);")
             self.logout()
+        elif self.doctype == 'Payment Entry':
+            self.show_msg('Login Successful! Processing payment..')
+            self.make_payment()
 
-    def make_payment(self, account_no, to_account, transfer_type, amount, payment_desc,
-    docname, payment_uid, comm_type='None', comm_value='None'):
-        WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
-            (By.PARTIAL_LINK_TEXT, 'Third Party Transfer')
-            )).find_element_by_tag_name('div').click()
+    def logout(self):
+        if self.logged_in:
+            self.switch_to_frame('common_menu1')
+            self.br.execute_script('return Logout();')
+            time.sleep(1)
 
-        self.docname = docname
-        self.payment_uid = payment_uid
-        self.transfer_type = transfer_type
-        if transfer_type == 'Transfer within the bank':
-            self.make_payment_within_bank(account_no, to_account, amount, payment_desc)
-        elif transfer_type == 'Transfer to other bank (NEFT)':
-            self.make_neft_payment(account_no, to_account, amount, payment_desc, comm_type, comm_value)
+        self.br.quit()
 
-    def make_payment_within_bank(self, account_no, to_account, amount, payment_desc):
+        if self.uid and hasattr(bank_integration, self.uid):
+            delattr(bank_integration, self.uid)
 
-        WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
-            (By.PARTIAL_LINK_TEXT, 'Transfer within the bank')
-            )).find_element_by_tag_name('div').click()
+    def make_payment(self):
+        self.switch_to_frame('common_menu1')
+        self.get_element("//a[@title='Funds Transfer']", 'xpath', now=True).click()
 
-        # Select from account
-        from_account = WebDriverWait(self.br, self.timeout).until(
-            EC.visibility_of_element_located((By.ID, 'fldFromAcctNo')))
+        self.switch_to_frame('main_part')
 
-        for option in from_account.find_elements_by_tag_name('option'):
-            if account_no in option.get_attribute('value'):
+        if self.data.transfer_type == 'Transfer within the bank':
+            self.make_payment_within_bank()
+        elif self.data.transfer_type == 'Transfer to other bank (NEFT)':
+            self.make_neft_payment()
+
+    def make_payment_within_bank(self):
+        self.get_element('selectTPT', 'class_name')
+        self.br.execute_script("return formSubmit_new('TPT');")
+
+        self.switch_to_frame('main_part')
+        self.get_element('frmTxn')
+
+        # from account
+        from_account = self.get_element('selAcct', now=True)
+        self.click_option(from_account, self.data.from_account,
+            'The account number you entered in Bank Integration Settings could not be found in NetBanking')
+
+        # to account
+        beneficiary = self.get_element('fldToAcct', now=True)
+        self.click_option(beneficiary, self.data.to_account,
+            'Unable to find a beneficiary associated with the party\'s account number')
+
+        # description
+        desc = self.get_element('transferDtls', now=True)
+        desc.clear()
+        desc.send_keys(self.data.payment_desc)
+
+        # amount
+        amt = self.get_element('transferAmt', now=True)
+        amt.clear()
+        amt.send_keys('%.2f' % self.data.amount)
+
+        # continue
+        self.br.execute_script("return onSubmit();")
+
+        # confirm
+        self.switch_to_frame('main_part')
+        self.br.execute_script("return issue_click();")
+
+        self.switch_to_frame('main_part')
+
+        self.wait_until(AnyEC(
+            EC.visibility_of_element_located((By.NAME, 'fldMobile')),
+            EC.visibility_of_element_located((By.XPATH, "//span[@class='successIcon']"))
+        ))
+
+        if 'fldMobile' == self.br._found_element[-1]:
+            self.process_otp()
+        else:
+            self.payment_success()
+
+    def click_option(self, element, to_click, error=None):
+        for option in element.find_elements_by_tag_name('option'):
+            val = option.get_attribute('value')
+            if not val:
+                continue
+
+            if to_click in val:
                 option.click()
                 break
         else:
-            self.throw('The account number you entered in Bank Integration Settings is incorrect', logout=True)
+            if error:
+                self.throw(error)
 
-        # Select party account
-        beneficiary = self.br.find_element_by_id('fldToAcctNo')
-        for option in beneficiary.find_elements_by_tag_name('option'):
-            if to_account in option.get_attribute('value'):
-                option.click()
-                break
+    def make_neft_payment(self):
+        pass
+
+    def continue_payment(self, otp):
+        self.switch_to_frame('main_part')
+        self.submit_otp(otp)
+
+        try:
+            self.switch_to_frame('main_part')
+
+            if self.data.transfer_type == 'Transfer within the bank':
+                self.get_element("//span[@class='successIcon']", 'xpath', throw=False)
+        except TimeoutException:
+            self.throw('OTP Authentication failed. Exiting..')
         else:
-            self.throw('Unable to find a beneficiary associated with the party\'s account number', logout=True)
+            self.payment_success()
 
-        self.br.find_element_by_id('fldTxnDesc').send_keys(payment_desc)
-        self.br.find_element_by_id('fldTxnAmount').send_keys(str(amount))
-        self.br.find_element_by_name('fldContinue').click()
-        self.continue_payment()
+    def payment_success(self):
+        self.switch_to_frame('main_part')
 
-    def continue_payment(self):
-        # Click confirm button
-        WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
-            (By.NAME, 'fldConfirm'))).click()
+        save_file(self.docname + ' Online Payment Screenshot.png', self.br.get_screenshot_as_png(), self.doctype,
+            self.docname, is_private=1)
 
-        WebDriverWait(self.br, self.timeout).until(AnyEC(
-            EC.visibility_of_element_located((By.NAME, 'fldOtp')),
-            EC.visibility_of_element_located((By.ID, 'impssuccess'))
-        ))
+        ref_no = '-'
+        if self.data.transfer_type == 'Transfer within the bank':
+            ref_no = self.br.execute_script("return $('table.transTable td:nth-child(3) > span').text();") or '-'
 
-        if not self.br._found_element:
-            frappe.emit_js("console.error(`" + self.br.page_source + "`);")
-            self.throw('Timed out waiting for element to be present', logout=True)
-
-
-        if 'fldOtp' in self.br._found_element:
-            WebDriverWait(self.br, self.timeout).until(
-                EC.visibility_of_element_located((By.NAME, 'fldMobile'))).click()
-
-            mobile_no = WebDriverWait(self.br, self.timeout).until(
-                EC.visibility_of_element_located((By.ID, 'usrMobileNo'))).text
-
-            self.br.find_element_by_name('fldOtp').click()
-
-            frappe._bank_session = self
-
-            frappe.publish_realtime('get_otp',
-                {
-                    'mobile_no': mobile_no,
-                    'payment_uid': self.payment_uid,
-                    'api_name': self.__class__.__name__,
-                    'resume_info': self.get_resume_info()
-                },
-                user=frappe.session.user, doctype="Payment Entry",
-                docname=self.docname)
-
-        elif 'impssuccess' in self.br._found_element:
-            self.payment_success_action()
-
-    def continue_payment_with_otp(self, otp):
-        WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
-            (By.ID, 'fldOtpToken'))).send_keys(otp)
-        self.br.find_element_by_name('fldOtpAuth').click()
-
-        WebDriverWait(self.br, self.timeout).until(AnyEC(
-            EC.visibility_of_element_located((By.CLASS_NAME, 'rsaAuthFailure')),
-            EC.visibility_of_element_located((By.ID, 'impssuccess'))
-        ))
-
-        if not self.br._found_element:
-            frappe.emit_js("console.error(`" + self.br.page_source + "`);")
-            self.throw('Timed out waiting for element to be present', logout=True)
-
-        if 'rsaAuthFailure' in self.br._found_element:
-            self.throw('OTP Authentication has failed. Please try again.', logout=True)
-
-        else:
-            self.payment_success_action()
-
-    def payment_success_action(self):
-        # Get reference no. and screenshot << refno is the id
-        save_file(
-            self.docname + ' Online Payment Screenshot.png',
-            self.br.get_screenshot_as_png(), 'Payment Entry',
-            self.docname, is_private=1
-        )
-
-        if self.transfer_type == 'Transfer within the bank':
-            ref_no = self.br.find_element_by_id('refno').text
-        else:
-            ref_no = self.br.find_element_by_class_name('clsreferenceno').text
-
-        frappe.publish_realtime('payment_success',
-            {'ref_no': ref_no, 'payment_uid': self.payment_uid},
+        frappe.publish_realtime('payment_success', {'ref_no': ref_no, 'uid': self.uid},
             user=frappe.session.user, doctype="Payment Entry", docname=self.docname)
 
+        frappe.db.commit()
         self.logout()
-
-        if hasattr(frappe, '_bank_session'):
-            del frappe._bank_session
-
-
-    def make_neft_payment(self, account_no, to_account, amount, payment_desc, comm_type, comm_value):
-        WebDriverWait(self.br, self.timeout).until(EC.visibility_of_element_located(
-            (By.PARTIAL_LINK_TEXT, 'Transfer to other bank')
-            )).find_element_by_tag_name('div').click()
-
-        # Select from account
-        try:
-            from_account = WebDriverWait(self.br, self.timeout).until(
-                EC.visibility_of_element_located((By.ID, 'fldAcctNo')))
-        except:
-            self.throw('Unable to access NEFT services at the moment. Please try again later.', logout=True)
-
-        for option in from_account.find_elements_by_tag_name('option'):
-            if account_no in option.get_attribute('value'):
-                option.click()
-                break
-        else:
-            self.throw('The account number you entered in Bank Integration Settings is incorrect', logout=True)
-
-        # Select party account
-        beneficiary = self.br.find_element_by_id('fldBenefDetail')
-        for option in beneficiary.find_elements_by_tag_name('option'):
-            if to_account in option.get_attribute('value'):
-                option.click()
-                break
-        else:
-            self.throw('Unable to find a beneficiary associated with the party\'s account number', logout=True)
-
-        self.br.find_element_by_id('fldTxnDesc').send_keys(payment_desc)
-        self.br.find_element_by_id('fldTxnAmount').send_keys(str(amount))
-
-        comm_mode = self.br.find_element_by_id('fldComMode')
-        for option in comm_mode.find_elements_by_tag_name('option'):
-            if comm_type in option.text:
-                option.click()
-                break
-
-        self.br.find_element_by_id('fldMobileEmail').send_keys(comm_value)
-
-        continue_btns = self.br.find_elements_by_name("fldContinue")
-        for x in continue_btns:
-            if x.is_displayed():
-                x.click()
-                break
-
-
-        WebDriverWait(self.br, self.timeout).until(AnyEC(
-            EC.alert_is_present(),
-            EC.visibility_of_element_located((By.NAME, 'fldConfirm'))
-        ))
-
-        if self.br._found_element == 'alert':
-            self.br.switch_to.alert.accept()
-
-        self.continue_payment()

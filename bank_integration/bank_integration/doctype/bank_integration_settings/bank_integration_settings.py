@@ -8,19 +8,9 @@ from frappe.model.document import Document
 from bank_integration.bank_integration.api import get_bank_api
 
 class BankIntegrationSettings(Document):
-	def validate(self):
-		if not self.disabled:
-			frappe.emit_js("frappe.msgprint('Checking credentials');",
-			doctype=self.doctype, docname=self.name)
+	def check_credentials(self, uid):
+		if self.disabled:
+			return
 
-			bank = get_bank_api(self.bank_name)
-			bank.login(self.username, self.password)
-
-			frappe.emit_js("frappe.update_msgprint('Logging in...');",
-			doctype=self.doctype, docname=self.name)
-
-			bank.check_login(logout=True)
-
-			frappe.emit_js("frappe.update_msgprint('Credentials verified successfully!'); \
-			setTimeout(() => {frappe.hide_msgprint()}, 2000);",
-			doctype=self.doctype, docname=self.name)
+		bank = get_bank_api(self.bank_name, self.username, self.get_password(), doctype=self.doctype, docname=self.name,
+			uid=uid)

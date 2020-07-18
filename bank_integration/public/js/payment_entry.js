@@ -3,40 +3,7 @@
 
 frappe.ui.form.on('Payment Entry', {
 	onload: function(frm) {
-        frappe.realtime.on("get_otp", function(data){
-            if (data.payment_uid != frm.payment_uid || frm.otp_requested) {
-                return;
-            }
-
-            frm.otp_requested = true;
-            frappe.hide_msgprint();
-            var otp_dialog = frappe.prompt(
-                {fieldtype: 'Data', label: 'One Time Password',
-                 fieldname: 'otp', reqd: 1,
-                 description: `A one time password has been sent to your Mobile
-                 Number <strong>${data.mobile_no}</strong> for further authentication.`},
-            function(_data){
-                frappe.call({
-                    method: "bank_integration.bank_integration.make_payment.continue_payment_with_otp",
-                    args: {
-                        otp: _data.otp,
-                        api_name: data.api_name,
-                        payment_uid: frm.payment_uid,
-                        transfer_type: frm.doc.transfer_type,
-                        docname: frm.doc.name,
-                        resume_info: data.resume_info},
-                });
-                delete frm.otp_requested;
-            }, 'Enter OTP');
-            otp_dialog.set_secondary_action(function(){
-                frappe.call({
-                    method: "bank_integration.bank_integration.make_payment.cancel_payment",
-                    args: {api_name: data.api_name, resume_info: data.resume_info}
-                });
-                delete frm.payment_uid;
-                delete frm.otp_requested;
-            });
-        });
+        bi.listenForOtp(frm);
 
         $('input[data-fieldname="payment_desc"]').keypress(function (e) {
             var regex = new RegExp("^[a-zA-Z0-9 ]+$");
@@ -50,22 +17,24 @@ frappe.ui.form.on('Payment Entry', {
         });
 
         frappe.realtime.on('payment_success', function(data){
-            if (data.payment_uid != frm.payment_uid) {
+            if (data.uid != frm._uid) {
                 return;
             }
 
             frappe.update_msgprint('Payment successful!');
             setTimeout(function() {
                 frappe.hide_msgprint();
-                frm.doc.remarks = '';
-                frm.doc.online_payment_status = 'Paid';
-                frm.doc.reference_no = data.ref_no;
+                frm.set_value('remarks', '');
+                frm.set_value('online_payment_status', 'Paid');
+                frm.set_value('reference_no',data.ref_no);
                 frm.refresh();
                 frm.save().then(function(){
-                    frm.savesubmit();
+                    frm.savesubmit().then(() => {
+                        // email / sms
+                    })
                 });
             }, 1000);
-            delete frm.payment_uid;
+            delete frm._uid;
         });
     },
 
@@ -169,15 +138,20 @@ frappe.ui.form.on('Payment Entry', {
                     <br> Amount Payable: <strong>${frm.doc.paid_amount}</strong>
                     <br> Description: <strong>${frm.doc.payment_desc}</strong>`,
                     function() {
-                        frm.payment_uid = frappe.utils.get_random(7);
+                        frm._uid = frappe.utils.get_random(7);
+                        let payment_data = {
+                            from_account: frm.doc.paid_from,
+                            to_account: frm.doc.party_bank_ac_no,
+                            transfer_type: frm.doc.transfer_type,
+                            amount: frm.doc.paid_amount,
+                            payment_desc: frm.doc.payment_desc,
+                            comm_type: frm.doc.comm_type,
+                            comm_value: comm_value ? comm_value.trim().replace(" ", "") : ''
+                        }
 
                         frappe.call({
-                            method: "bank_integration.bank_integration.make_payment.make_payment",
-                            args: {from_account: frm.doc.paid_from, to_account: frm.doc.party_bank_ac_no,
-                                transfer_type: frm.doc.transfer_type, amount: frm.doc.paid_amount,
-                                payment_desc: frm.doc.payment_desc, docname: frm.doc.name,
-                                comm_type: frm.doc.comm_type, comm_value: comm_value,
-                                payment_uid: frm.payment_uid},
+                            method: "bank_integration.bank_integration.api.payments.make_payment",
+                            args: {docname: frm.doc.name, uid: frm._uid, data: payment_data},
                         });
                     });
                 });
