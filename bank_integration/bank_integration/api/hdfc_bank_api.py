@@ -47,6 +47,7 @@ class HDFCBankAPI(BankAPI):
                 "//td/span[text()[contains(.,'The Customer ID/IPIN (Password) is invalid.')]]")),
             EC.visibility_of_element_located((By.NAME, 'fldOldPass')),
             EC.visibility_of_element_located((By.NAME, 'fldMobile')),
+            EC.visibility_of_element_located((By.NAME, 'fldAnswer')),
             EC.visibility_of_element_located((By.NAME, 'common_menu1'))
         ), throw='ignore')
 
@@ -62,6 +63,8 @@ class HDFCBankAPI(BankAPI):
 
         elif 'fldMobile' == self.br._found_element[-1]:
             self.process_otp()
+        elif 'fldAnswer' == self.br._found_element[-1]:
+            self.process_secret_questions()
         else:
             self.login_success()
 
@@ -96,13 +99,60 @@ class HDFCBankAPI(BankAPI):
 
         setattr(bank_integration, self.uid, self)
 
+    def process_secret_questions(self):
+        frappe.publish_realtime('get_bank_answers', {
+            'questions': self.get_question_map(),
+            'uid': self.uid,
+            'bank_name': self.bank_name,
+            'resume_info': self.get_resume_info(),
+            'data': self.data,
+            'logged_in': self.logged_in
+        }, user=frappe.session.user, doctype=self.doctype, docname=self.docname)
+
+    def get_question_map(self, answer_fields=False):
+        question_elements = self.br.find_elements_by_name('fldQuestionText')
+        answer_elements = self.br.find_elements_by_name('fldAnswer')
+
+        question_map = {}
+        i = 0
+
+        for element in question_elements:
+            if not answer_fields:
+                value = element.get_attribute('value')
+            else:
+                try:
+                    value = answer_fields[i]
+                except IndexError:
+                    self.throw('Could not find fields to input secret answers. Exiting..')
+
+            i += 1
+            question_map['question_' + str(i)] = value
+
+        return question_map
+
+    def submit_otp_or_answers(self, otp=None, answers=None):
+        if not otp and not answers:
+            self.throw('Invalid response received. Exiting..')
+
+        if otp:
+            self.submit_otp(otp)
+        else:
+            self.submit_answers(answers)
+
     def submit_otp(self, otp):
         otp_field = self.get_element('fldOtpToken')
         otp_field.send_keys(otp)
         self.br.execute_script('return authOtp();')
 
-    def continue_login(self, otp):
-        self.submit_otp(otp)
+    def submit_answers(self, answers):
+        field_map = self.get_question_map(True)
+        for fieldname, element in field_map:
+            element.clear().send_keys(answers.get(fieldname))
+
+        self.br.execute_script('return submit_challenge();')
+
+    def continue_login(self, otp=None, answers=None):
+        self.submit_otp_or_answers(otp, answers)
         try:
             self.get_element('common_menu1', throw=False)
         except TimeoutException:
@@ -145,6 +195,7 @@ class HDFCBankAPI(BankAPI):
         self.get_element("//a[@title='Funds Transfer']", 'xpath', now=True).click()
 
         self.switch_to_frame('main_part')
+        self.get_element('selectTPT', 'class_name')
 
         if self.data.transfer_type == 'Transfer within the bank':
             self.make_payment_within_bank()
@@ -152,7 +203,6 @@ class HDFCBankAPI(BankAPI):
             self.make_neft_payment()
 
     def make_payment_within_bank(self):
-        self.get_element('selectTPT', 'class_name')
         self.br.execute_script("return formSubmit_new('TPT');")
 
         self.switch_to_frame('main_part')
@@ -187,43 +237,135 @@ class HDFCBankAPI(BankAPI):
 
         self.switch_to_frame('main_part')
 
-        self.wait_until(AnyEC(
-            EC.visibility_of_element_located((By.NAME, 'fldMobile')),
-            EC.visibility_of_element_located((By.XPATH, "//span[@class='successIcon']"))
-        ))
+        try:
+            self.wait_until(AnyEC(
+                EC.visibility_of_element_located((By.NAME, 'fldMobile')),
+                EC.visibility_of_element_located((By.NAME, 'fldAnswer')),
+                EC.visibility_of_element_located((By.XPATH, "//span[@class='successIcon']"))
+            ), throw=False)
+        except:
+            self.throw('Failed to find indication of successful payment. Please check is payment has been processed manually.',
+                screenshot=True)
 
         if 'fldMobile' == self.br._found_element[-1]:
             self.process_otp()
+        elif 'fldAnswer' == self.br._found_element[-1]:
+            self.process_secure_questions()
         else:
             self.payment_success()
 
-    def click_option(self, element, to_click, error=None):
+    def make_neft_payment(self):
+        self.br.execute_script("return formSubmit_new('NEFT');")
+
+        self.switch_to_frame('main_part')
+        self.get_element('frmTxn')
+
+        # from account
+        from_account = self.get_element('selAcct', now=True)
+        self.click_option(from_account, self.data.from_account,
+            'The account number you entered in Bank Integration Settings could not be found in NetBanking')
+
+        # to account
+        try:
+            account_index = self.br.execute_script('return l_beneacct.indexOf("{}");'.format(self.data.to_account))
+        except:
+            self.throw('Failed to select beneficiary in Netbanking')
+
+        if account_index == -1:
+            self.throw('Beneficary account number not found in Netbanking')
+        else:
+            account_index = str(account_index)
+
+        beneficiary = self.get_element('fldBeneId', now=True)
+        self.click_option(beneficiary, account_index,
+            'Unable to find a beneficiary associated with the party\'s account number', exact=True)
+
+        time.sleep(0.5)
+        if (self.get_element('fldBeneAcct', now=True).get_attribute('value') or '').strip() != self.data.to_account:
+            self.throw('Incorrect account selected. Please contact developer for support.')
+
+        # description
+        desc = self.get_element('fldTxnDesc', now=True)
+        desc.clear()
+        desc.send_keys(self.data.payment_desc)
+
+        # amount
+        amt = self.get_element('fldTxnAmount', now=True)
+        amt.clear()
+        amt.send_keys('%.2f' % self.data.amount)
+
+        # communication type
+        comm_type = self.get_element('fldComMode', now=True)
+        self.click_option(comm_type, self.data.comm_type, 'Unable to select communication type in NEFT form',
+            compare_text=True)
+
+        # communication value
+        comm_value = self.get_element('fldMobileEmail', now=True)
+        comm_value.clear()
+        comm_value.send_keys(self.data.comm_value)
+
+        # accept terms
+        self.get_element("//*[@name='fldtc']/preceding-sibling::span[@class='checkbox']", 'xpath', now=True).click()
+
+        # continue
+        self.br.execute_script("return formSubmit();")
+
+        # confirm
+        self.switch_to_frame('main_part')
+        self.br.execute_script("return formSubmit();")
+
+        self.switch_to_frame('main_part')
+
+        try:
+            self.wait_until(AnyEC(
+                EC.visibility_of_element_located((By.NAME, 'fldMobile')),
+                EC.visibility_of_element_located((By.NAME, 'fldAnswer')),
+                EC.visibility_of_element_located((By.XPATH, "//td[contains(text(),'Reference Number')]"))
+            ), throw=False)
+        except:
+            self.throw('Failed to find indication of successful payment. Please check is payment has been processed manually.',
+                screenshot=True)
+
+        if 'fldMobile' == self.br._found_element[-1]:
+            self.process_otp()
+        elif 'fldAnswer' == self.br._found_element[-1]:
+            self.process_secure_questions()
+        else:
+            self.payment_success()
+
+    def click_option(self, element, to_click, error=None, exact=False, compare_text=False):
         for option in element.find_elements_by_tag_name('option'):
-            val = option.get_attribute('value')
+            if not compare_text:
+                val = option.get_attribute('value')
+            else:
+                val = (option.text or '').strip()
             if not val:
                 continue
 
-            if to_click in val:
+            val = val.strip()
+
+            if (exact and to_click == val) or to_click in val:
                 option.click()
                 break
         else:
             if error:
                 self.throw(error)
 
-    def make_neft_payment(self):
-        pass
-
-    def continue_payment(self, otp):
+    def continue_payment(self, otp=None, answers=None):
         self.switch_to_frame('main_part')
-        self.submit_otp(otp)
+        self.submit_otp_or_answers(otp, answers)
 
         try:
             self.switch_to_frame('main_part')
 
             if self.data.transfer_type == 'Transfer within the bank':
                 self.get_element("//span[@class='successIcon']", 'xpath', throw=False)
+
+            elif self.data.transfer_type == 'Transfer to other bank (NEFT)':
+                self.get_element("//td[contains(text(),'Reference Number')]", 'xpath', throw=False)
+
         except TimeoutException:
-            self.throw('OTP Authentication failed. Exiting..')
+            self.throw('OTP / Security Answer Authentication failed. Exiting..', screenshot=True)
         else:
             self.payment_success()
 
@@ -236,6 +378,9 @@ class HDFCBankAPI(BankAPI):
         ref_no = '-'
         if self.data.transfer_type == 'Transfer within the bank':
             ref_no = self.br.execute_script("return $('table.transTable td:nth-child(3) > span').text();") or '-'
+        elif self.data.transfer_type == 'Transfer to other bank (NEFT)':
+            ref_no = (self.get_element("//td[contains(text(),'Reference Number')]/following-sibling::td[last()]",
+                'xpath').text or '-').strip()
 
         frappe.publish_realtime('payment_success', {'ref_no': ref_no, 'uid': self.uid},
             user=frappe.session.user, doctype="Payment Entry", docname=self.docname)

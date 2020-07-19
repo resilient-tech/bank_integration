@@ -54,3 +54,47 @@ bi.listenForOtp = function (frm) {
 		});
 	});
 }
+
+bi.listenForQuestions = function (frm) {
+	frappe.realtime.on("get_bank_answers", function(data){
+		if (!frm || data.uid != frm._uid || frm.answers_requested || !data.questions) return;
+
+		frm.answers_requested = true;
+		frappe.hide_msgprint();
+
+		let fields = [];
+		for (let [fieldname, label] of Object.entries(data.questions)) {
+			fields.push({
+				fieldtype: 'Data',
+				label: label,
+				fieldname: fieldname,
+				reqd: 1
+			})
+		}
+
+		var dialog = frappe.prompt(fields, function(_data){
+			frappe.call({
+				method: "bank_integration.bank_integration.api.continue_with_answers",
+				args: {
+					answers: _data,
+					bank_name: data.bank_name,
+					uid: frm._uid,
+					doctype: frm.doc.doctype,
+					docname: frm.doc.name,
+					resume_info: data.resume_info,
+					data: data.data,
+					logged_in: data.logged_in},
+			});
+			delete frm.answers_requested;
+		}, 'Answer Secure Access Questions');
+
+		dialog.set_secondary_action(function(){
+			frappe.call({
+				method: "bank_integration.bank_integration.api.cancel_session",
+				args: {bank_name: data.bank_name, resume_info: data.resume_info, logged_in: data.logged_in}
+			});
+			delete frm._uid;
+			delete frm.answers_requested;
+		});
+	});
+}

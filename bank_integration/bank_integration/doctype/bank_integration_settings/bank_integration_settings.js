@@ -4,6 +4,7 @@
 frappe.ui.form.on('Bank Integration Settings', {
 	onload(frm) {
 		bi.listenForOtp(frm);
+		bi.listenForQuestions(frm);
 	},
 	validate(frm) {
 		if (frm.doc.disabled) return;

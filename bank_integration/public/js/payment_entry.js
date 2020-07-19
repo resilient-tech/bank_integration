@@ -4,6 +4,7 @@
 frappe.ui.form.on('Payment Entry', {
 	onload: function(frm) {
         bi.listenForOtp(frm);
+        bi.listenForQuestions(frm);
 
         $('input[data-fieldname="payment_desc"]').keypress(function (e) {
             var regex = new RegExp("^[a-zA-Z0-9 ]+$");
@@ -48,7 +49,7 @@ frappe.ui.form.on('Payment Entry', {
                             });
                         } else {
                             setup_sms(frm);
-                            frm.sms_link.click();
+                            if (frm.sms_link) frm.sms_link.click();
                         }
                     })
                 });
@@ -184,10 +185,10 @@ frappe.ui.form.on('Payment Entry', {
 
 function setup_sms(frm) {
     if (frm.sms_setup_done) return;
-    frm.sms_setup_done = true;
 
     if (frm.doc.docstatus===1 && !in_list(["Cancelled", "Closed"], frm.doc.status)
             && frm.doc.payment_type === "Pay"){
+        frm.sms_setup_done = true;
         frm.sms_link = frm.page.add_menu_item('Send SMS', function() {
             var d = new frappe.ui.Dialog({
                 title: 'Send SMS',

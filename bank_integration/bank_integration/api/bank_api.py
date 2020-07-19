@@ -3,6 +3,8 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe.utils.file_manager import save_file
+
 # Selenium Imports
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -94,14 +96,23 @@ class BankAPI:
             pass
         elif throw:
             if not selector:
-                self.throw('Timed out waiting for element to be present')
+                self.throw('Timed out waiting for element to be present', screenshot=True)
             else:
                 self.throw('Element not found: ' + selector)
         else:
             raise
 
-    def throw(self, message):
-        frappe.emit_js("frappe.hide_msgprint();")
+    def throw(self, message, screenshot=False):
+        js = "frappe.hide_msgprint();"
+        if screenshot:
+            save_file('payment_error_{}.png'.format(self.uid or frappe.utils.random_string(7)),
+                self.br.get_screenshot_as_png(), self.doctype, self.docname, is_private=1)
+
+            frappe.db.commit()
+            js += " if (cur_frm) cur_frm.reload_doc();"
+            message += " (See attached screenshot)"
+
+        frappe.emit_js(js)
         self.logout()
         frappe.throw(message)
 
