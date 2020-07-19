@@ -1,1 +1,1 @@
-bank_integration.patches.v0_1.create_custom_fields  # 19-07-2019
+execute:from bank_integration.install import after_install; after_install() # 1

@@ -119,7 +119,7 @@ class HDFCBankAPI(BankAPI):
             self.throw(alert)
 
     def login_success(self):
-        self.logged_in = True
+        self.logged_in = 1
 
         if self.doctype == 'Bank Integration Settings':
             self.show_msg('Credentials verified successfully!')

@@ -11,7 +11,7 @@ app_color = "#f77174"
 app_email = "info@resilient.tech"
 app_license = "MIT"
 
-after_install = "bank_integration.bank_integration.custom_fields.make_custom_fields"
+after_install = "bank_integration.install.after_install"
 
 app_include_js = 'assets/bank_integration/js/common.js'
 

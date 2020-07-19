@@ -12,7 +12,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.common.by import By
 
 class BankAPI:
-    def __init__(self, username=None, password=None, timeout=30, logged_in=False, doctype=None, docname=None, uid=None,
+    def __init__(self, username=None, password=None, timeout=30, logged_in=0, doctype=None, docname=None, uid=None,
             resume_info=None, data=None):
         self.username = username
         self.password = password

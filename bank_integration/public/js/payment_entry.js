@@ -30,7 +30,26 @@ frappe.ui.form.on('Payment Entry', {
                 frm.refresh();
                 frm.save().then(function(){
                     frm.savesubmit().then(() => {
-                        // email / sms
+                        if (frm.doc.comm_email) {
+                            let email_dialog = new frappe.views.CommunicationComposer({
+                                doc: frm.doc,
+                                frm: frm,
+                                subject: `Online Payment Processed (${frm.doc.name})`,
+                                recipients: frm.doc.comm_email,
+                                attach_document_print: true,
+                                txt: `Dear Sir,<br><br>
+                                A payment for ${fmt_money(frm.doc.paid_amount)} with Reference No. ${frm.doc.reference_no} has been made to your account on ${get_today()}. Enclosed is the payment note, with details of your invoices against which the said payment is made.<br><br>
+                                Feel free to get in touch with us if you have any queries or concerns.<br><br>
+                                Thank you for doing business with us. We look forward to your continued patronage in the future.`
+                            });
+
+                            email_dialog.dialog.$wrapper.on('shown.bs.modal', () => {
+                                email_dialog.select_attachments();
+                            });
+                        } else {
+                            setup_sms(frm);
+                            frm.sms_link.click();
+                        }
                     })
                 });
             }, 1000);
@@ -93,7 +112,6 @@ frappe.ui.form.on('Payment Entry', {
 
     comm_type: function(frm) {
         if(frm.doc.comm_type){
-            get_contact_data(frm);
             if (frm.doc.comm_type == 'Email'){
                 frm.toggle_reqd('comm_email', 1);
                 frm.toggle_reqd('comm_mobile', 0);
@@ -165,9 +183,12 @@ frappe.ui.form.on('Payment Entry', {
 
 
 function setup_sms(frm) {
+    if (frm.sms_setup_done) return;
+    frm.sms_setup_done = true;
+
     if (frm.doc.docstatus===1 && !in_list(["Cancelled", "Closed"], frm.doc.status)
             && frm.doc.payment_type === "Pay"){
-        frm.page.add_menu_item('Send SMS', function() {
+        frm.sms_link = frm.page.add_menu_item('Send SMS', function() {
             var d = new frappe.ui.Dialog({
                 title: 'Send SMS',
                 width: 400,
@@ -181,7 +202,7 @@ function setup_sms(frm) {
             d.fields_dict.send.input.onclick = function() {
                 var btn = d.fields_dict.send.input;
                 var v = d.get_values();
-                console.log(v);
+
                 if(v) {
                     $(btn).set_working();
                     frappe.call({
@@ -321,8 +342,7 @@ function set_transfer_type(frm) {
 }
 
 function get_contact_data(frm) {
-    if(frm.doc.party && frm.doc.comm_type &&
-    $.inArray(frm.doc.party_type, ['Supplier', 'Customer', 'Employee']) != -1){
+    if(frm.doc.party && $.inArray(frm.doc.party_type, ['Supplier', 'Customer', 'Employee']) != -1){
         frappe.call({
 			method: "bank_integration.bank_integration.get_contact_data.get_contact_data",
             args: {party_type: frm.doc.party_type, party: frm.doc.party,
