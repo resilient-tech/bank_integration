@@ -3,6 +3,7 @@
 # For license information, please see license.txt
 
 import frappe
+import bank_integration
 from frappe.utils.file_manager import save_file
 
 # Selenium Imports
@@ -15,21 +16,22 @@ from selenium.webdriver.common.by import By
 
 class BankAPI:
     def __init__(self, username=None, password=None, timeout=30, logged_in=0, doctype=None, docname=None, uid=None,
-            resume_info=None, data=None):
+            resume=False, data=None):
         self.username = username
         self.password = password
         self.timeout = timeout
         self.logged_in = logged_in
         self.doctype = doctype
         self.docname = docname
-        self.uid = uid
+        self.uid = uid or frappe.utils.random_string(7)
+        self.cache_key = 'bank_' + self.uid
         self.data = data
 
         if getattr(self, 'init'):
             self.init()
 
-        if resume_info:
-            self.resume_session(**resume_info)
+        if resume:
+            self.resume_session()
         else:
             self.login()
 
@@ -44,7 +46,7 @@ class BankAPI:
 
     def get_options(self):
         options = Options()
-        options.add_argument("window-size=998,998")
+        options.add_argument("window-size=990,1200")
         if not frappe.conf.developer_mode:
             options.add_argument("--headless")
             options.add_experimental_option('w3c', False)
@@ -52,9 +54,7 @@ class BankAPI:
         return options
 
     def emit_js(self, js):
-        if self.uid:
-            js = "if (cur_frm._uid === '{0}') {{ {1} }}".format(self.uid, js)
-
+        js = "if (cur_frm && cur_frm._uid === '{0}') {{ {1} }}".format(self.uid, js)
         frappe.emit_js(js, doctype=self.doctype, docname=self.docname)
 
     def show_msg(self, msg):
@@ -66,10 +66,17 @@ class BankAPI:
             'session_id': self.br.session_id
         }
 
-    def resume_session(self, executor_url, session_id):
-        self.br = webdriver.Remote(command_executor=executor_url, options=self.get_options())
+    def resume_session(self):
+        cached = frappe.cache().get_value(self.cache_key, user=frappe.session.user)
+        if not cached:
+            self.throw('Unable to find session info in cache')
+
+        self.data = frappe._dict(cached['data'] or {})
+        resume_info = frappe._dict(cached['resume_info'])
+
+        self.br = webdriver.Remote(command_executor=resume_info.executor_url, options=self.get_options())
         self.br.close()
-        self.br.session_id = session_id
+        self.br.session_id = resume_info.session_id
 
     def wait_until(self, ec, timeout=None, throw=True):
         try:
@@ -105,8 +112,8 @@ class BankAPI:
     def throw(self, message, screenshot=False):
         js = "frappe.hide_msgprint();"
         if screenshot:
-            save_file('payment_error_{}.png'.format(self.uid or frappe.utils.random_string(7)),
-                self.br.get_screenshot_as_png(), self.doctype, self.docname, is_private=1)
+            save_file('payment_error_{}.png'.format(self.uid), self.br.get_screenshot_as_png(),
+                self.doctype, self.docname, is_private=1)
 
             frappe.db.commit()
             js += " if (cur_frm) cur_frm.reload_doc();"
@@ -116,6 +123,19 @@ class BankAPI:
         self.logout()
         frappe.throw(message)
 
+    def save_for_later(self):
+        frappe.cache().set_value(self.cache_key, {
+            'resume_info': self.get_resume_info(),
+            'data': self.data
+        },  user=frappe.session.user)
+
+        setattr(bank_integration, self.cache_key, self)
+
+    def delete_cache(self):
+        frappe.cache().delete_key(self.cache_key, user=frappe.session.user)
+
+        if hasattr(bank_integration, self.cache_key):
+            delattr(bank_integration, self.cache_key)
 
 class AnyEC:
     """ Use with WebDriverWait to combine expected_conditions

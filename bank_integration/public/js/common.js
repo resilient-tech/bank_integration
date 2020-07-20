@@ -34,11 +34,9 @@ bi.listenForOtp = function (frm) {
 				args: {
 					otp: _data.otp,
 					bank_name: data.bank_name,
-					uid: frm._uid,
+					uid: data.uid,
 					doctype: frm.doc.doctype,
 					docname: frm.doc.name,
-					resume_info: data.resume_info,
-					data: data.data,
 					logged_in: data.logged_in},
 			});
 			delete frm.otp_requested;
@@ -47,9 +45,8 @@ bi.listenForOtp = function (frm) {
 		otp_dialog.set_secondary_action(function(){
 			frappe.call({
 				method: "bank_integration.bank_integration.api.cancel_session",
-				args: {bank_name: data.bank_name, resume_info: data.resume_info, logged_in: data.logged_in}
+				args: {bank_name: data.bank_name, logged_in: data.logged_in, uid: data.uid}
 			});
-			delete frm._uid;
 			delete frm.otp_requested;
 		});
 	});
@@ -78,11 +75,9 @@ bi.listenForQuestions = function (frm) {
 				args: {
 					answers: _data,
 					bank_name: data.bank_name,
-					uid: frm._uid,
+					uid: data.uid,
 					doctype: frm.doc.doctype,
 					docname: frm.doc.name,
-					resume_info: data.resume_info,
-					data: data.data,
 					logged_in: data.logged_in},
 			});
 			delete frm.answers_requested;
@@ -91,9 +86,8 @@ bi.listenForQuestions = function (frm) {
 		dialog.set_secondary_action(function(){
 			frappe.call({
 				method: "bank_integration.bank_integration.api.cancel_session",
-				args: {bank_name: data.bank_name, resume_info: data.resume_info, logged_in: data.logged_in}
+				args: {bank_name: data.bank_name, logged_in: data.logged_in, uid: data.uid}
 			});
-			delete frm._uid;
 			delete frm.answers_requested;
 		});
 	});

@@ -18,10 +18,11 @@ frappe.ui.form.on('Payment Entry', {
         });
 
         frappe.realtime.on('payment_success', function(data){
-            if (data.uid != frm._uid) {
+            if (data.uid != frm._uid || frm.success_action_started) {
                 return;
             }
 
+            frm.success_action_started = true;
             frappe.update_msgprint('Payment successful!');
             setTimeout(function() {
                 frappe.hide_msgprint();
@@ -54,7 +55,7 @@ frappe.ui.form.on('Payment Entry', {
                     })
                 });
             }, 1000);
-            delete frm._uid;
+            delete frm.success_action_started;
         });
     },
 
@@ -154,7 +155,7 @@ frappe.ui.form.on('Payment Entry', {
                     frappe.confirm(`Are you sure you want to proceed with the following details? <br>
                     <br> Party's Bank Account No: <strong>${frm.doc.party_bank_ac_no}</strong>
                     <br> Transfer Type: <strong>${frm.doc.transfer_type}</strong>
-                    <br> Amount Payable: <strong>${frm.doc.paid_amount}</strong>
+                    <br> Amount Payable: <strong>${fmt_money(frm.doc.paid_amount)}</strong>
                     <br> Description: <strong>${frm.doc.payment_desc}</strong>`,
                     function() {
                         frm._uid = frappe.utils.get_random(7);

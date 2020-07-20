@@ -7,7 +7,6 @@ import time
 import frappe
 from frappe.utils.file_manager import save_file
 
-import bank_integration
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
 
 # Selenium imports
@@ -64,7 +63,7 @@ class HDFCBankAPI(BankAPI):
         elif 'fldMobile' == self.br._found_element[-1]:
             self.process_otp()
         elif 'fldAnswer' == self.br._found_element[-1]:
-            self.process_secret_questions()
+            self.process_security_questions()
         else:
             self.login_success()
 
@@ -92,24 +91,22 @@ class HDFCBankAPI(BankAPI):
             'email_id': email_id,
             'uid': self.uid,
             'bank_name': self.bank_name,
-            'resume_info': self.get_resume_info(),
-            'data': self.data,
             'logged_in': self.logged_in
         }, user=frappe.session.user, doctype=self.doctype, docname=self.docname)
 
-        setattr(bank_integration, self.uid, self)
+        self.save_for_later()
 
-    def process_secret_questions(self):
+    def process_security_questions(self):
         frappe.publish_realtime('get_bank_answers', {
             'questions': self.get_question_map(),
             'uid': self.uid,
             'bank_name': self.bank_name,
-            'resume_info': self.get_resume_info(),
-            'data': self.data,
             'logged_in': self.logged_in
         }, user=frappe.session.user, doctype=self.doctype, docname=self.docname)
 
-    def get_question_map(self, answer_fields=False):
+        self.save_for_later()
+
+    def get_question_map(self, get_fields=False):
         question_elements = self.br.find_elements_by_name('fldQuestionText')
         answer_elements = self.br.find_elements_by_name('fldAnswer')
 
@@ -117,11 +114,11 @@ class HDFCBankAPI(BankAPI):
         i = 0
 
         for element in question_elements:
-            if not answer_fields:
+            if not get_fields:
                 value = element.get_attribute('value')
             else:
                 try:
-                    value = answer_fields[i]
+                    value = answer_elements[i]
                 except IndexError:
                     self.throw('Could not find fields to input secret answers. Exiting..')
 
@@ -146,8 +143,9 @@ class HDFCBankAPI(BankAPI):
 
     def submit_answers(self, answers):
         field_map = self.get_question_map(True)
-        for fieldname, element in field_map:
-            element.clear().send_keys(answers.get(fieldname))
+        for fieldname, element in field_map.items():
+            element.clear()
+            element.send_keys(answers.get(fieldname))
 
         self.br.execute_script('return submit_challenge();')
 
@@ -185,10 +183,8 @@ class HDFCBankAPI(BankAPI):
             self.br.execute_script('return Logout();')
             time.sleep(1)
 
+        self.delete_cache()
         self.br.quit()
-
-        if self.uid and hasattr(bank_integration, self.uid):
-            delattr(bank_integration, self.uid)
 
     def make_payment(self):
         self.switch_to_frame('common_menu1')
@@ -250,7 +246,7 @@ class HDFCBankAPI(BankAPI):
         if 'fldMobile' == self.br._found_element[-1]:
             self.process_otp()
         elif 'fldAnswer' == self.br._found_element[-1]:
-            self.process_secure_questions()
+            self.process_security_questions()
         else:
             self.payment_success()
 
@@ -329,7 +325,7 @@ class HDFCBankAPI(BankAPI):
         if 'fldMobile' == self.br._found_element[-1]:
             self.process_otp()
         elif 'fldAnswer' == self.br._found_element[-1]:
-            self.process_secure_questions()
+            self.process_security_questions()
         else:
             self.payment_success()
 
@@ -365,7 +361,8 @@ class HDFCBankAPI(BankAPI):
                 self.get_element("//td[contains(text(),'Reference Number')]", 'xpath', throw=False)
 
         except TimeoutException:
-            self.throw('OTP / Security Answer Authentication failed. Exiting..', screenshot=True)
+            self.throw('{} authentication failed. Exiting..'.format('OTP' if otp else 'Security questions'),
+                screenshot=True)
         else:
             self.payment_success()
 
