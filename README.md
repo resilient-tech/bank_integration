@@ -6,7 +6,7 @@ Unofficial API to handle bank transactions using ERPNext (v11+)
 
 Needs [`chromedriver`](https://launchpad.net/ubuntu/bionic/+package/chromium-chromedriver) installed.
 
-#### In action
+## In action
 
 <img src=".github/demo.gif" style="max-width: 100%;">
 
