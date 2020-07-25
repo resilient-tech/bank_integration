@@ -42,7 +42,7 @@ frappe.ui.form.on('Payment Entry', {
                                 txt: `Dear Sir,<br><br>
                                 A payment for ${fmt_money(frm.doc.paid_amount)} with Reference No. ${frm.doc.reference_no} has been made to your account on ${get_today()}. Enclosed is the payment note, with details of your invoices against which the said payment is made.<br><br>
                                 Feel free to get in touch with us if you have any queries or concerns.<br><br>
-                                Thank you for doing business with us. We look forward to your continued patronage in the future.`
+                                Thank you for doing business with us. We look forward to your continued patronage in the future.<br><br>`
                             });
 
                             email_dialog.dialog.$wrapper.on('shown.bs.modal', () => {
