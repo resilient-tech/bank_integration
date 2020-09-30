@@ -29,7 +29,13 @@ class HDFCBankAPI(BankAPI):
         cust_id = self.get_element('fldLoginUserId')
         cust_id.send_keys(self.username, Keys.ENTER)
 
-        self.get_element('chkrsastu', 'id').click()
+        pass_input = self.get_element('fldPassword')
+
+        try:
+            secure_access_cb = self.get_element('chkrsastu', 'id', timeout=2, throw=False)
+            secure_access_cb.click()
+        except TimeoutException:
+            pass
 
         try:
             self.get_element('fldCaptcha', timeout=1, throw=False)
@@ -38,7 +44,6 @@ class HDFCBankAPI(BankAPI):
         else:
             self.throw('HDFC Netbanking is asking for a CAPTCHA, which we don\'t currently support. Exiting.')
 
-        pass_input = self.get_element('fldPassword')
         pass_input.send_keys(self.password, Keys.ENTER)
 
         self.wait_until(AnyEC(

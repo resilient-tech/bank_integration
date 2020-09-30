@@ -80,7 +80,10 @@ frappe.ui.form.on('Payment Entry', {
         if (frm.doc.payment_type != 'Pay'){
             return;
         }
+
         set_bank_name_and_ac(frm);
+        get_contact_data(frm);
+
         if (frm.doc.pay_now) {
             // Set reference details
             frm.set_value('reference_no', '-');
