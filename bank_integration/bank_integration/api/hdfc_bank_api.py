@@ -5,7 +5,9 @@
 import time
 
 import frappe
-from frappe.utils import getdate, add_days
+import hashlib
+import pandas as pd
+from frappe.utils import getdate, add_days, flt
 from frappe.utils.file_manager import save_file
 
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
@@ -227,7 +229,7 @@ class HDFCBankAPI(BankAPI):
             self.show_msg("Login Successful! Processing payment..")
             self.make_payment()
         elif self.doctype == "Bank Account":
-            self.show_msg("Login Successful! Processing payment..")
+            self.show_msg("Fetching Transactions..")
             self.fetch_transactions()
 
     def logout(self):
@@ -508,70 +510,75 @@ class HDFCBankAPI(BankAPI):
         self.logout()
 
     def fetch_transactions(self):
+        def update_transactions(transactions, after_date, bank_account):
+            existing_transactions = frappe.get_all(
+                "Bank Transaction",
+                filters=[["creation", ">", add_days(after_date, -1)]],
+                pluck="transaction_hash",
+            )
+            for transaction in transactions:
+                transaction_hash = hashlib.sha224(str(transaction).encode()).hexdigest()
+
+                if transaction_hash in existing_transactions:
+                    continue
+
+                bank_transaction = frappe.get_doc({"doctype": "Bank Transaction"})
+
+                bank_transaction.update(
+                    {
+                        "transaction_hash": transaction_hash,
+                        "date": getdate(transaction["Date"]),
+                        "description": transaction["Narration"],
+                        "debit": flt(transaction["Withdrawal"]),
+                        "credit": flt(transaction["Deposit"]),
+                        "refernce_number": transaction["Cheque/Ref. No."],
+                        "closing_balance": flt(transaction["Closing Balance"]),
+                        "bank_account": bank_account,
+                        "unallocated_amount": abs(
+                            flt(transaction["Deposit"]) - flt(transaction["Withdrawal"])
+                        ),
+                    }
+                )
+                bank_transaction.submit()
+
         self.switch_to_frame("main_part")
-        self.get_element("enquiryatag", selector_type="id").click()
-        self.get_element("SIN_nohref", selector_type="id").click()
+        self.switch_to_frame("left_menu")
+        self.get_element("enquiryatag", selector_type="id", now=True).click()
+        self.get_element("SIN_nohref", selector_type="id", now=True).click()
 
-        for option in self.get_element("selActt"):
-            if option.name == self.data.from_account:
-                option.click()  # select() in earlier versions of webdriver
-                break
+        self.switch_to_frame("main_part")
 
-        for option in self.get_element("selAccttype"):
-            if option.name == "SCA":
-                option.click()  # select() in earlier versions of webdriver
-                break
-
-        self.get_element("radTxnType").setAttribute("value", "C")
-        self.get_element("frmDatePicker", selector_type="id").setAttribute(
-            "value", self.data.from_date.strftime("%d/%m/%Y")
+        self.click_option(
+            self.get_element("selAccttype", now=True),
+            "SCA",
+            "Unable to select Account Type",
         )
-        self.get_element("frmDatePicker", selector_type="id").setAttribute(
-            "value", getdate().strftime("%d/%m/%Y")
+        self.click_option(
+            self.get_element("selAcct", now=True),
+            self.data.from_account_no,
+            "Unable to select Account",
         )
 
-        transactions = None
+        self.br.find_elements_by_class_name("radio")[1].click()
+
+        self.get_element("frmDatePicker", selector_type="id", now=True).send_keys(
+            getdate(self.data.from_date).strftime("%d/%m/%Y")
+        )
+        self.get_element("toDatePicker", selector_type="id", now=True).send_keys(
+            getdate().strftime("%d/%m/%Y")
+        )
+        self.br.execute_script("return formSubmitbytype()")
+
+        transactions = []
         tranaction_tables = self.br.find_elements_by_class_name("datatable")
 
         for transaction_table in tranaction_tables:
-            print(transaction_table)
+            transactions += pd.read_html(transaction_table.get_attribute("outerHTML"))
 
-        # self.menu_click('SIN' , 'RS' , 'true')
-        # SIN_nohref click
+        self.logout()
 
-        # self.get_element('selActt').value =self.data.from_account
-        # (name)selActt #account number
-        # (name)selAccttype = SCA #account Type
-        # enablePeriod ('T')
-        # (name)radTxnType value=C
-        # (id) frmDatePicker value fromDate
-        # (id) toDatePicker to Date
-        # table id='1' class = datatable
+        transactions = pd.concat(transactions)
+        transactions = transactions.where(pd.notnull(transactions), None)
+        transactions = transactions.to_dict("records")
 
-    def update_transactions(self, transactions, after_date, bank_account):
-        import hashib
-
-        existing_transactions = frappe.get_all(
-            "Bank Transaction",
-            filters=[["creation", ">", add_days(after_date, -1)]],
-            pluck="transaction_hash",
-        )
-        for transaction in transactions:
-            transaction_hash = hashlib.sha224(str(transaction).encode()).hexdigest()
-
-            if transaction_hash in existing_transactions:
-                continue
-
-            bank_transaction = frappe.get_doc({"doctype": "Bank Transaction"})
-
-            bank_transaction.update(
-                {
-                    "date": transaction.date,
-                    "description": transaction.description,
-                    "debit": transaction.debit,
-                    "credit": transaction.credit,
-                    "refernce_number": transaction.refernce_number,
-                    "bank_account": bank_account,
-                }
-            )
-            bank_transaction.submit()
+        update_transactions(transactions, self.data.from_date, self.data.from_account)

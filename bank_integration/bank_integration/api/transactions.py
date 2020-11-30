@@ -21,7 +21,7 @@ def get_transactions(docname, uid, data):
         "Bank Account", {"account_name": data.from_account}, "name"
     )
     bi = frappe.get_doc("Bank Integration Settings", bi_name)
-    data.from_account = bi.bank_account_no
+    data.from_account_no = bi.bank_account_no
 
     bank = get_bank_api(
         bi.bank_name,

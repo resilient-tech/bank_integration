@@ -219,5 +219,25 @@ custom_fields = {
             'insert_after': 'bank_name',
             'permlevel': 7
         }
+    ],
+    'Bank Transaction': [
+        {
+            'fieldname': 'transaction_hash',
+            'label': 'Transaction Hash',
+            'fieldtype': 'Data',
+            'hidden': 1,
+            'print_hide': 1,
+            'read_only': 1,
+            'insert_after': 'date',
+            'permlevel': 7
+        },
+        {
+            'fieldname': 'closing_balance',
+            'label': 'Closing Balance',
+            'fieldtype': 'Currency',
+            'in_list_view': 1,
+            'insert_after': 'currency',
+            'permlevel': 7
+        }
     ]
 }
