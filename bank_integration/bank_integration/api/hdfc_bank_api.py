@@ -7,7 +7,7 @@ import time
 import frappe
 import hashlib
 import pandas as pd
-from frappe.utils import getdate, add_days, flt
+from frappe.utils import getdate, today, add_months, add_days, flt
 from frappe.utils.file_manager import save_file
 
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
@@ -229,7 +229,6 @@ class HDFCBankAPI(BankAPI):
             self.show_msg("Login Successful! Processing payment..")
             self.make_payment()
         elif self.doctype == "Bank Account":
-            self.show_msg("Fetching Transactions..")
             self.fetch_transactions()
 
     def logout(self):
@@ -509,29 +508,30 @@ class HDFCBankAPI(BankAPI):
         frappe.db.commit()
         self.logout()
 
-    def fetch_transactions(self):
+    def fetch_transactions(self, from_date=None):
         def update_transactions(transactions, after_date, bank_account):
             existing_transactions = frappe.get_all(
                 "Bank Transaction",
                 filters=[["creation", ">", add_days(after_date, -1)]],
-                pluck="transaction_hash",
+                pluck="transaction_id",
             )
+            count = 0
             for transaction in transactions:
-                transaction_hash = hashlib.sha224(str(transaction).encode()).hexdigest()
+                transaction_id = hashlib.sha224(str(transaction).encode()).hexdigest()
 
-                if transaction_hash in existing_transactions:
+                if transaction_id in existing_transactions:
                     continue
 
                 bank_transaction = frappe.get_doc({"doctype": "Bank Transaction"})
 
                 bank_transaction.update(
                     {
-                        "transaction_hash": transaction_hash,
+                        "transaction_id": transaction_id,
                         "date": getdate(transaction["Date"]),
                         "description": transaction["Narration"],
                         "debit": flt(transaction["Withdrawal"]),
                         "credit": flt(transaction["Deposit"]),
-                        "refernce_number": transaction["Cheque/Ref. No."],
+                        "reference_number": transaction["Cheque/Ref. No."],
                         "closing_balance": flt(transaction["Closing Balance"]),
                         "bank_account": bank_account,
                         "unallocated_amount": abs(
@@ -540,6 +540,17 @@ class HDFCBankAPI(BankAPI):
                     }
                 )
                 bank_transaction.submit()
+                count += 1
+
+            frappe.publish_realtime(
+                "sync_transactions",
+                {
+                    "uid": self.uid,
+                    "count": count,
+                    "after_date": add_days(after_date, -1),
+                },
+                user=frappe.session.user,
+            )
 
         self.switch_to_frame("main_part")
         self.switch_to_frame("left_menu")
@@ -553,16 +564,34 @@ class HDFCBankAPI(BankAPI):
             "SCA",
             "Unable to select Account Type",
         )
+
         self.click_option(
             self.get_element("selAcct", now=True),
             self.data.from_account_no,
-            "Unable to select Account",
+            "Please verify account number in Bank Integration Settings",
         )
+
+        prev_valid_date = add_months(add_days(today(), -getdate().day + 1), -1)
+        if not frappe.db.count(
+            "Bank Transaction", filters={"bank_account": self.data.bank_account}
+        ):
+            from_date = prev_valid_date
+        else:
+            from_date = frappe.get_all(
+                "Bank Transaction",
+                filters={"bank_account": self.data.bank_account},
+                order_by="creation desc",
+                limit=1,
+                pluck="date",
+            )[0]
+            if getdate(from_date) <= getdate(prev_valid_date):
+                from_date = prev_valid_date
+            from_date = add_days(from_date, -1)
 
         self.br.find_elements_by_class_name("radio")[1].click()
 
         self.get_element("frmDatePicker", selector_type="id", now=True).send_keys(
-            getdate(self.data.from_date).strftime("%d/%m/%Y")
+            getdate(from_date).strftime("%d/%m/%Y")
         )
         self.get_element("toDatePicker", selector_type="id", now=True).send_keys(
             getdate().strftime("%d/%m/%Y")
@@ -570,9 +599,15 @@ class HDFCBankAPI(BankAPI):
         self.br.execute_script("return formSubmitbytype()")
 
         transactions = []
-        tranaction_tables = self.br.find_elements_by_class_name("datatable")
+        self.br.execute_script("$('.datatable').show()")
+        transaction_tables = self.br.find_elements_by_class_name("datatable")
 
-        for transaction_table in tranaction_tables:
+        if not transaction_tables:
+            self.throw("No New Transactions found")
+            self.logout()
+            return
+
+        for transaction_table in transaction_tables:
             transactions += pd.read_html(transaction_table.get_attribute("outerHTML"))
 
         self.logout()
@@ -580,5 +615,6 @@ class HDFCBankAPI(BankAPI):
         transactions = pd.concat(transactions)
         transactions = transactions.where(pd.notnull(transactions), None)
         transactions = transactions.to_dict("records")
+        transactions.reverse()
 
-        update_transactions(transactions, self.data.from_date, self.data.from_account)
+        update_transactions(transactions, from_date, self.data.bank_account)

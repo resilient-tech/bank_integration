@@ -19,3 +19,7 @@ doctype_js = {
     "Payment Entry": "public/js/payment_entry.js",
     "Bank Account": "public/js/bank_account.js",
 }
+
+page_js = {
+    "bank-reconciliation": "public/js/bank_reconciliation.js",
+}
