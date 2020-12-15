@@ -1,9 +1,6 @@
-modifyMethod("erpnext.accounts.bankReconciliation", "make", function () {
-    frappe.db.get_single_value('Global Defaults', 'default_company').then(function (default_company) {
-        $("input[data-fieldname='company']").val(default_company)
-    })
-    $("input[data-fieldname='company']").focus()
-});
+frappe.db.get_single_value('Global Defaults', 'default_company').then(function (default_company) {
+    frappe.pages["bank-reconciliation"].page.fields_dict.company.set_value(default_company)
+})
 
 modifyMethod("erpnext.accounts.bankReconciliation", "add_actions", function () {
     let me = cur_page.page
