@@ -563,7 +563,7 @@ class HDFCBankAPI(BankAPI):
         self.get_element("SIN_nohref", selector_type="id", now=True).click()
 
         self.switch_to_frame("main_part")
-
+        self.get_element("selectselAccttype0", "id")
         self.click_option(
             self.get_element("selAccttype", now=True),
             "SCA",
