@@ -517,12 +517,10 @@ class HDFCBankAPI(BankAPI):
             )
             count = 0
             for transaction in transactions:
-                if transaction["Withdrawal"]:
-                    transaction["Withdrawal"] = flt(transaction["Withdrawal"])
-                if transaction["Deposit"]:
-                    transaction["Deposit"] = flt(transaction["Deposit"])
+                for key in ("Withdrawal", "Deposit", "Closing Balance"):
+                    if transaction.get(key):
+                        transaction[key] = flt(transaction[key])
                 transaction["Cheque/Ref. No."] = cint(transaction["Cheque/Ref. No."])
-                transaction["Closing Balance"] = flt(transaction["Closing Balance"])
 
                 transaction_id = hashlib.sha224(str(transaction).encode()).hexdigest()
 
