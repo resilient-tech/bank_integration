@@ -7,7 +7,7 @@ import time
 import frappe
 import hashlib
 import pandas as pd
-from frappe.utils import getdate, today, add_months, add_days, flt
+from frappe.utils import getdate, today, add_months, add_days, flt, cint
 from frappe.utils.file_manager import save_file
 
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
@@ -517,6 +517,13 @@ class HDFCBankAPI(BankAPI):
             )
             count = 0
             for transaction in transactions:
+                if transaction["Withdrawal"]:
+                    transaction["Withdrawal"] = flt(transaction["Withdrawal"])
+                if transaction["Deposit"]:
+                    transaction["Deposit"] = flt(transaction["Deposit"])
+                transaction["Cheque/Ref. No."] = cint(transaction["Cheque/Ref. No."])
+                transaction["Closing Balance"] = flt(transaction["Closing Balance"])
+
                 transaction_id = hashlib.sha224(str(transaction).encode()).hexdigest()
 
                 if transaction_id in existing_transactions:
