@@ -29,7 +29,7 @@ class HDFCBankAPI(BankAPI):
         self.bank_name = "HDFC Bank"
 
     def login(self):
-        # self.show_msg("Attempting login...")
+        self.show_msg("Attempting login...")
         self.setup_browser()
         self.br.get("https://netbanking.hdfcbank.com/netbanking/")
 
