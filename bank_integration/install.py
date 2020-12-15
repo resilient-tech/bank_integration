@@ -18,13 +18,34 @@ def make_custom_fields():
     frappe.db.commit()
 
 def make_property_setters():
-    frappe.make_property_setter({
-        'doctype': 'Employee',
-        'fieldname': 'bank_ac_no',
-        'property': 'permlevel',
-        'value': 7,
-        'property_type': 'Int'
-    })
+    property_setter_list = [
+        {
+            "doctype": "Employee",
+            "fieldname": "bank_ac_no",
+            "property": "permlevel",
+            "value": 7,
+            "property_type": "Int",
+        },
+        {
+            "doctype_or_docfield": "DocField",
+            "doctype": "Bank Transaction",
+            "fieldname": "transaction_id",
+            "property": "hidden",
+            "value": 1,
+            "property_type": "Check",
+        },
+        {
+            "doctype_or_docfield": "DocField",
+            "doctype": "Bank Transaction",
+            "fieldname": "transaction_id",
+            "property": "print_hide",
+            "value": 1,
+            "property_type": "Check",
+        },
+    ]
+
+    for property_setter in property_setter_list:
+        frappe.make_property_setter(property_setter)
     frappe.db.commit()
 
 def make_role_and_permissions():
@@ -219,5 +240,16 @@ custom_fields = {
             'insert_after': 'bank_name',
             'permlevel': 7
         }
-    ]
+    ],
+    'Bank Transaction': [
+        {
+            'fieldname': 'closing_balance',
+            'label': 'Closing Balance',
+            'fieldtype': 'Currency',
+            'in_list_view': 1,
+            'allow_in_quick_entry': 1,
+            'in_preview': 1,
+            'insert_after': 'currency',
+        },
+    ],
 }
