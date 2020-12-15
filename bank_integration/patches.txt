@@ -1,1 +1,1 @@
-execute:from bank_integration.install import after_install; after_install() # 1
+execute:from bank_integration.install import after_install; after_install() # 2
