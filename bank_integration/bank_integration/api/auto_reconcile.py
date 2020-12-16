@@ -69,7 +69,7 @@ def reconcile_with_journal_entries(transaction, account):
                     add_days(transaction.date, 1),
                 ],
             ],
-            "ifnull(reference_number, '')": "",
+            "ifnull(clearance_date, '')": "",
         },
         fields=["name", "'Journal Entry' as doctype"],
     )
