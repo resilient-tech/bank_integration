@@ -13,7 +13,7 @@ def reconcile_with_payment_entries(transaction, account):
 
     filters = {
         "docstatus": 1,
-        "reference_no": transaction.reference_number.lstrip("0"),
+        "reference_no": ["Like", "%" + transaction.reference_number.lstrip("0")],
         "reference_date": [
             "Between",
             [
@@ -61,7 +61,7 @@ def reconcile_with_journal_entries(transaction, account):
         "Journal Entry",
         filters={
             "docstatus": 1,
-            "cheque_no": transaction.reference_number.lstrip("0"),
+            "cheque_no": ["Like", "%" + transaction.reference_number.lstrip("0")],
             "cheque_date": [
                 "Between",
                 [
