@@ -526,7 +526,7 @@ class HDFCBankAPI(BankAPI):
                         transaction[key] = flt(transaction[key])
                 transaction["Cheque/Ref. No."] = str(
                     transaction["Cheque/Ref. No."]
-                ).rstrip(".0")
+                ).replace('.0', '')
 
                 transaction_id = hashlib.sha224(str(transaction).encode()).hexdigest()
 
