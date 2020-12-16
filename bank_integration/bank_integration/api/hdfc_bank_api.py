@@ -510,11 +510,13 @@ class HDFCBankAPI(BankAPI):
 
     def fetch_transactions(self, from_date=None):
         def update_transactions(transactions, after_date, bank_account):
-            existing_transactions = frappe.get_all(
+            trans_ids = frappe.get_all(
                 "Bank Transaction",
-                filters=[["creation", ">", add_days(after_date, -1)]],
-                pluck="transaction_id",
+                filters=[["creation", ">", add_days(after_date, -1)],
+                        ["bank_account", "=", bank_account]],
+                fields="transaction_id",
             )
+            existing_transactions = [item['transaction_id'] for item in trans_ids]
             count = 0
             for transaction in transactions:
                 for key in ("Withdrawal", "Deposit", "Closing Balance"):
@@ -585,10 +587,10 @@ class HDFCBankAPI(BankAPI):
             from_date = frappe.get_all(
                 "Bank Transaction",
                 filters={"bank_account": self.data.bank_account},
+                fields=['date'],
                 order_by="creation desc",
                 limit=1,
-                pluck="date",
-            )[0]
+            )[0]['date']
             if getdate(from_date) <= getdate(prev_valid_date):
                 from_date = prev_valid_date
             from_date = add_days(from_date, -1)
