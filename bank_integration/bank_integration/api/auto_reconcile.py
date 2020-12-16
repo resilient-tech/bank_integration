@@ -59,8 +59,8 @@ def reconcile_transactions(uid, bank_account):
                 filters=[
                     {
                         "docstatus": 1,
-                        "ref_no": transaction.reference_number.lstrip("0"),
-                        "reference_date": [
+                        "cheque_no": transaction.reference_number.lstrip("0"),
+                        "cheque_date": [
                             "Between",
                             [
                                 add_days(transaction.date, -7),

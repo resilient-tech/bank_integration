@@ -7,7 +7,7 @@ import time
 import frappe
 import hashlib
 import pandas as pd
-from frappe.utils import getdate, today, add_months, add_days, flt, cint
+from frappe.utils import getdate, today, add_months, add_days, flt
 from frappe.utils.file_manager import save_file
 
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
@@ -512,17 +512,21 @@ class HDFCBankAPI(BankAPI):
         def update_transactions(transactions, after_date, bank_account):
             trans_ids = frappe.get_all(
                 "Bank Transaction",
-                filters=[["creation", ">", add_days(after_date, -1)],
-                        ["bank_account", "=", bank_account]],
+                filters=[
+                    ["creation", ">", add_days(after_date, -1)],
+                    ["bank_account", "=", bank_account],
+                ],
                 fields="transaction_id",
             )
-            existing_transactions = [item['transaction_id'] for item in trans_ids]
+            existing_transactions = [item["transaction_id"] for item in trans_ids]
             count = 0
             for transaction in transactions:
                 for key in ("Withdrawal", "Deposit", "Closing Balance"):
                     if transaction.get(key):
                         transaction[key] = flt(transaction[key])
-                transaction["Cheque/Ref. No."] = cint(transaction["Cheque/Ref. No."])
+                transaction["Cheque/Ref. No."] = str(
+                    transaction["Cheque/Ref. No."]
+                ).rstrip(".0")
 
                 transaction_id = hashlib.sha224(str(transaction).encode()).hexdigest()
 
@@ -580,17 +584,21 @@ class HDFCBankAPI(BankAPI):
 
         prev_valid_date = add_months(add_days(today(), -getdate().day + 1), -1)
         if not frappe.db.count(
-            "Bank Transaction", filters={"bank_account": self.data.bank_account}
+            "Bank Transaction",
+            filters=[
+                ["bank_account", "=", self.data.bank_account],
+                ["date", ">", prev_valid_date],
+            ],
         ):
             from_date = prev_valid_date
         else:
             from_date = frappe.get_all(
                 "Bank Transaction",
                 filters={"bank_account": self.data.bank_account},
-                fields=['date'],
+                fields="date",
                 order_by="creation desc",
                 limit=1,
-            )[0]['date']
+            )[0]["date"]
             if getdate(from_date) <= getdate(prev_valid_date):
                 from_date = prev_valid_date
             from_date = add_days(from_date, -1)
