@@ -585,10 +585,10 @@ class HDFCBankAPI(BankAPI):
         prev_valid_date = add_months(add_days(today(), -getdate().day + 1), -1)
         if not frappe.db.count(
             "Bank Transaction",
-            filters=[
-                ["bank_account", "=", self.data.bank_account],
-                ["date", ">", prev_valid_date],
-            ],
+            filters={
+                "bank_account": self.data.bank_account,
+                "date": [">", prev_valid_date],
+            },
         ):
             from_date = prev_valid_date
         else:
