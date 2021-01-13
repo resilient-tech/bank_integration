@@ -138,6 +138,15 @@ frappe.ui.form.on('Payment Entry', {
             }
         }
     },
+    before_submit: function (frm) {
+        if (frm.doc.pay_now && frm.doc.online_payment_status != "Paid") {
+            frappe.throw({
+                "title": __("Warning"),
+                "message": __("Payment not made !"),
+                "indicator": "orange"
+            })
+        }
+    },
 
     refresh: function(frm) {
         if (frm.doc.docstatus === 0) {
