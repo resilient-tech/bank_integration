@@ -256,7 +256,7 @@ class HDFCBankAPI(BankAPI):
         self.br.execute_script("return formSubmit_new('TPT');")
 
         self.switch_to_frame("main_part")
-        self.get_element("selAcct")
+        self.get_element("selectselAcct0", "id")
 
         # from account
         from_account = self.get_element("selAcct", now=True)
@@ -321,7 +321,7 @@ class HDFCBankAPI(BankAPI):
         self.br.execute_script("return formSubmit_new('NEFT');")
 
         self.switch_to_frame("main_part")
-        self.get_element("selAcct")
+        self.get_element("selectselAcct0", "id")
         
         # from account
         from_account = self.get_element("selAcct", now=True)
