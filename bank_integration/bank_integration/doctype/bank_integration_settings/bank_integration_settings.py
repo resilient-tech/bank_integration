@@ -8,6 +8,7 @@ from frappe.model.document import Document
 from bank_integration.bank_integration.api import get_bank_api
 
 class BankIntegrationSettings(Document):
+	@frappe.whitelist()
 	def check_credentials(self, uid):
 		if self.disabled:
 			return
