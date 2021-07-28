@@ -24,12 +24,12 @@ def reconcile_with_payment_entries(transaction, account):
         "ifnull(clearance_date, '')": "",
     }
 
-    if transaction.debit > 0:
+    if transaction.withdrawal > 0:
         filters["paid_from"] = account
-        filters["paid_amount"] = transaction.debit
-    elif transaction.credit > 0:
+        filters["paid_amount"] = transaction.withdrawal
+    elif transaction.deposit > 0:
         filters["paid_to"] = account
-        filters["paid_amount"] = transaction.credit
+        filters["paid_amount"] = transaction.deposit
 
     payment_entry = frappe.get_all(
         "Payment Entry",
@@ -80,10 +80,10 @@ def reconcile_with_journal_entries(transaction, account):
             "parent": journal_entry["name"],
             "account": account,
         }
-        if transaction.debit > 0:
-            filters["credit_in_account_currency"] = transaction.debit
+        if transaction.withdrawal > 0:
+            filters["credit_in_account_currency"] = transaction.withdrawal
         else:
-            filters["debit_in_account_currency"] = transaction.credit
+            filters["debit_in_account_currency"] = transaction.deposit
         journal_entry_account = frappe.get_all(
             "Journal Entry Account",
             filters=filters,
@@ -98,9 +98,9 @@ def reconcile_with_journal_entries(transaction, account):
                 {
                     "payment_document": "Journal Entry",
                     "payment_entry": journal_entry["name"],
-                    "allocated_amount": transaction.debit
-                    if transaction.debit > 0
-                    else transaction.credit,
+                    "allocated_amount": transaction.withdrawal
+                    if transaction.withdrawal > 0
+                    else transaction.deposit,
                 },
             )
             transaction_doc.save(ignore_permissions=True)
@@ -121,7 +121,7 @@ def reconcile_transactions(uid, bank_account):
             "bank_account": bank_account,
             "ifnull(reference_number, '')": ("!=", ""),
         },
-        fields=["name", "debit", "credit", "reference_number", "date"],
+        fields=["name", "withdrawal", "deposit", "reference_number", "date"],
     )
 
     count = 0

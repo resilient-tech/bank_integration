@@ -50,7 +50,7 @@ bi.listenForOtp = function (frm) {
 			delete frm.otp_requested;
 		});
 	});
-}
+};
 
 bi.listenForQuestions = function (frm) {
 	frappe.realtime.on("get_bank_answers", function(data){
@@ -66,7 +66,7 @@ bi.listenForQuestions = function (frm) {
 				label: label,
 				fieldname: fieldname,
 				reqd: 1
-			})
+			});
 		}
 
 		var dialog = frappe.prompt(fields, function(_data){
@@ -91,7 +91,7 @@ bi.listenForQuestions = function (frm) {
 			delete frm.answers_requested;
 		});
 	});
-}
+};
 
 frappe.provide("modifyMethod");
 

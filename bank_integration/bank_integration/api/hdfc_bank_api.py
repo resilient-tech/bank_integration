@@ -322,7 +322,7 @@ class HDFCBankAPI(BankAPI):
 
         self.switch_to_frame("main_part")
         self.get_element("selectselAcct0", "id")
-        
+
         # from account
         from_account = self.get_element("selAcct", now=True)
         self.click_option(
@@ -520,6 +520,7 @@ class HDFCBankAPI(BankAPI):
             )
             existing_transactions = [item["transaction_id"] for item in trans_ids]
             count = 0
+            closing_balance = 0
             for transaction in transactions:
                 for key in ("Withdrawal", "Deposit", "Closing Balance"):
                     if transaction.get(key):
@@ -540,8 +541,8 @@ class HDFCBankAPI(BankAPI):
                         "transaction_id": transaction_id,
                         "date": getdate(transaction["Date"]),
                         "description": transaction["Narration"],
-                        "debit": flt(transaction["Withdrawal"]),
-                        "credit": flt(transaction["Deposit"]),
+                        "withdrawal": flt(transaction["Withdrawal"]),
+                        "deposit": flt(transaction["Deposit"]),
                         "reference_number": transaction["Cheque/Ref. No."],
                         "closing_balance": flt(transaction["Closing Balance"]),
                         "bank_account": bank_account,
@@ -552,12 +553,14 @@ class HDFCBankAPI(BankAPI):
                 )
                 bank_transaction.submit()
                 count += 1
+                closing_balance = flt(transaction["Closing Balance"])
 
             frappe.publish_realtime(
                 "sync_transactions",
                 {
                     "uid": self.uid,
                     "count": count,
+                    "closing_balance": closing_balance,
                     "after_date": add_days(after_date, -1),
                 },
                 user=frappe.session.user,
