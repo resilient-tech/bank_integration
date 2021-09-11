@@ -1,4 +1,5 @@
 frappe.provide('bi');
+frappe.provide("modifyMethod");
 
 bi.listenForOtp = function (frm) {
 	frappe.realtime.on("get_bank_otp", function(data){
@@ -92,8 +93,6 @@ bi.listenForQuestions = function (frm) {
 		});
 	});
 };
-
-frappe.provide("modifyMethod");
 
 modifyMethod = function (source, funcName, newFunc, before = false) {
   let sourceObj = eval(source);

@@ -13,14 +13,13 @@ app_license = "MIT"
 
 after_install = "bank_integration.install.after_install"
 
-# app_include_js = "assets/bank_integration/js/common.js"
+app_include_js = "/assets/bank_integration/js/common.js"
 
 doctype_js = {
-    "Payment Entry": "public/js/payment_entry.js",
-    "Bank Account": "public/js/bank_account.js",
-    "Bank Reconciliation Tool": "public/js/bank_reconciliation_tool.js"
+    "Payment Entry": "scripts/payment_entry.js",
+    "Bank Reconciliation Tool": "scripts/bank_reconciliation_tool.js"
 }
 
 page_js = {
-    "bank-reconciliation": "public/js/bank_reconciliation.js",
+    "bank-reconciliation": "scripts/bank_reconciliation.js",
 }
