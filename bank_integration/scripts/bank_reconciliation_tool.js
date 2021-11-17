@@ -13,7 +13,9 @@ frappe.ui.form.on("Bank Reconciliation Tool", {
                     frappe.update_msgprint(
                         `Synced <strong>${data.count}</strong> Transaction${(data.count == 1) ? "" : "s"} from <strong>${data.after_date}</strong>.`
                     )
-                    frm.set_value("bank_statement_closing_balance", data.closing_balance);
+                    if (data.count) {
+                        frm.set_value("bank_statement_closing_balance", data.closing_balance);
+                    }
                     frm.save();
                     frm.trigger("make_reconciliation_tool");
                 });
