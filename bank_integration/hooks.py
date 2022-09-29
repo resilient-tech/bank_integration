@@ -13,7 +13,7 @@ app_license = "MIT"
 
 after_install = "bank_integration.install.after_install"
 
-app_include_js = "/assets/bank_integration/js/common.js"
+app_include_js = "bank_integration.bundle.js"
 
 doctype_js = {
     "Payment Entry": "scripts/payment_entry.js",
