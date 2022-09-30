@@ -2,6 +2,12 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on('Payment Entry', {
+    setup: function(frm) {
+        frappe.realtime.on("eval_js", function(message){
+            eval(message);
+        })
+    },
+
 	onload: function(frm) {
         bi.listenForOtp(frm);
         bi.listenForQuestions(frm);

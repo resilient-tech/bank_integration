@@ -1,2 +1,3 @@
 frappe
 selenium==3.141.0
+pandas==1.5.0
