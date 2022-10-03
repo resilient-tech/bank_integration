@@ -55,7 +55,7 @@ class BankAPI:
 
     def emit_js(self, js):
         js = "if (cur_frm && cur_frm._uid === '{0}') {{ {1} }}".format(self.uid, js)
-        frappe.emit_js(js, doctype=self.doctype, docname=self.docname)
+        frappe.publish_realtime("eval_js", js, user=frappe.session.user, doctype=self.doctype, docname=self.docname)
 
     def show_msg(self, msg):
         self.emit_js("frappe.update_msgprint(`{0}`);".format(msg))
