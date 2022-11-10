@@ -527,7 +527,7 @@ class HDFCBankAPI(BankAPI):
                         transaction[key] = flt(transaction[key])
                 transaction["Cheque/Ref. No."] = str(
                     transaction["Cheque/Ref. No."]
-                ).replace('.0', '')
+                ).replace(".0", "")
 
                 transaction_id = hashlib.sha224(str(transaction).encode()).hexdigest()
 
@@ -632,6 +632,7 @@ class HDFCBankAPI(BankAPI):
 
         transactions = pd.concat(transactions)
         transactions = transactions.where(pd.notnull(transactions), None)
+        transactions.fillna(0, inplace=True)
         transactions = transactions.to_dict("records")
         transactions.reverse()
 
