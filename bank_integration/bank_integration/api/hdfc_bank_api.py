@@ -53,14 +53,14 @@ class HDFCBankAPI(BankAPI):
                 "HDFC Netbanking is asking for a CAPTCHA, which we don't currently support. Exiting."
             )
 
-        self.br.switch_to.active_element.send_keys(self.password, Keys.ENTER)
+        self.get_element("fldPassword").send_keys(self.password, Keys.ENTER)
 
         self.wait_until(
             AnyEC(
                 EC.visibility_of_element_located(
                     (
                         By.XPATH,
-                        "//td/span[text()[contains(.,'The Customer ID/IPIN (Password) is invalid.')]]",
+                        "//td/span[text()[contains(.,'Your ID and IPIN do not match. Please try again')]]",
                     )
                 ),
                 EC.visibility_of_element_located((By.NAME, "fldOldPass")),
@@ -71,7 +71,8 @@ class HDFCBankAPI(BankAPI):
             throw="ignore",
         )
 
-        if not self.br._found_element:
+        print(self.br._found_element, "herre" * 20)
+        if self.br._found_element:
             self.handle_login_error()
 
         elif "fldOldPass" == self.br._found_element[-1]:
