@@ -60,6 +60,7 @@ class HDFCBankAPI(BankAPI):
                 EC.visibility_of_element_located(
                     (
                         By.XPATH,
+                        # Message has changed on incorrect password
                         "//td/span[text()[contains(.,'Your ID and IPIN do not match. Please try again')]]",
                     )
                 ),
@@ -71,8 +72,8 @@ class HDFCBankAPI(BankAPI):
             throw="ignore",
         )
 
-        print(self.br._found_element, "herre" * 20)
-        if self.br._found_element:
+        # Todo: don't think _found_element as an attribute works anymore in 4+ selenium
+        if not self.br._found_element:
             self.handle_login_error()
 
         elif "fldOldPass" == self.br._found_element[-1]:
