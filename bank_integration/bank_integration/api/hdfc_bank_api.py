@@ -13,7 +13,6 @@ from frappe.utils.file_manager import save_file
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
 
 # Selenium imports
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import (

@@ -53,7 +53,7 @@ class BankAPI:
         pass
 
     def setup_browser(self):
-        self.br = webdriver.Chrome()
+        self.br = webdriver.Chrome(options=self.get_options())
 
     def get_options(self):
         options = Options()
