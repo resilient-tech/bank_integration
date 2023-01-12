@@ -37,8 +37,6 @@ class HDFCBankAPI(BankAPI):
         cust_id = self.get_element("fldLoginUserId")
         cust_id.send_keys(self.username, Keys.ENTER)
 
-        pass_input = self.get_element("fldPassword")
-
         try:
             secure_access_cb = self.get_element(
                 "chkrsastu", "id", timeout=2, throw=False
@@ -56,7 +54,7 @@ class HDFCBankAPI(BankAPI):
                 "HDFC Netbanking is asking for a CAPTCHA, which we don't currently support. Exiting."
             )
 
-        pass_input.send_keys(self.password, Keys.ENTER)
+        self.br.switch_to.active_element.send_keys(self.password, Keys.ENTER)
 
         self.wait_until(
             AnyEC(
