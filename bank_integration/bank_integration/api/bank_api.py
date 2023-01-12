@@ -53,14 +53,13 @@ class BankAPI:
         pass
 
     def setup_browser(self):
-        self.br = webdriver.Chrome(options=self.get_options(), port=12345)
+        self.br = webdriver.Chrome()
 
     def get_options(self):
         options = Options()
         options.add_argument("window-size=990,1200")
         if not frappe.conf.developer_mode:
             options.add_argument("--headless")
-            options.add_experimental_option("w3c", False)
 
         return options
 
