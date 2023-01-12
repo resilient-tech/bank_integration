@@ -13,7 +13,6 @@ from frappe.utils.file_manager import save_file
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
 
 # Selenium imports
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import (
@@ -37,8 +36,6 @@ class HDFCBankAPI(BankAPI):
         cust_id = self.get_element("fldLoginUserId")
         cust_id.send_keys(self.username, Keys.ENTER)
 
-        pass_input = self.get_element("fldPassword")
-
         try:
             secure_access_cb = self.get_element(
                 "chkrsastu", "id", timeout=2, throw=False
@@ -56,14 +53,15 @@ class HDFCBankAPI(BankAPI):
                 "HDFC Netbanking is asking for a CAPTCHA, which we don't currently support. Exiting."
             )
 
-        pass_input.send_keys(self.password, Keys.ENTER)
+        self.get_element("fldPassword").send_keys(self.password, Keys.ENTER)
 
         self.wait_until(
             AnyEC(
                 EC.visibility_of_element_located(
                     (
                         By.XPATH,
-                        "//td/span[text()[contains(.,'The Customer ID/IPIN (Password) is invalid.')]]",
+                        # Message has changed on incorrect password
+                        "//td/span[text()[contains(.,'Your ID and IPIN do not match. Please try again')]]",
                     )
                 ),
                 EC.visibility_of_element_located((By.NAME, "fldOldPass")),
@@ -74,6 +72,7 @@ class HDFCBankAPI(BankAPI):
             throw="ignore",
         )
 
+        # Todo: don't think _found_element as an attribute works anymore in 4+ selenium
         if not self.br._found_element:
             self.handle_login_error()
 
@@ -94,8 +93,9 @@ class HDFCBankAPI(BankAPI):
             self.process_otp()
         elif "fldAnswer" == self.br._found_element[-1]:
             self.process_security_questions()
+
         else:
-            self.login_success()
+            self.logged_in = True
 
     def process_otp(self):
         mobile_no = email_id = None
@@ -219,8 +219,6 @@ class HDFCBankAPI(BankAPI):
             self.throw(alert)
 
     def login_success(self):
-        self.logged_in = 1
-
         if self.doctype == "Bank Integration Settings":
             self.show_msg("Credentials verified successfully!")
             self.emit_js("setTimeout(() => {frappe.hide_msgprint()}, 2000);")
