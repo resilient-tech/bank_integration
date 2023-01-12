@@ -93,8 +93,9 @@ class HDFCBankAPI(BankAPI):
             self.process_otp()
         elif "fldAnswer" == self.br._found_element[-1]:
             self.process_security_questions()
+
         else:
-            self.login_success()
+            self.logged_in = True
 
     def process_otp(self):
         mobile_no = email_id = None
@@ -218,8 +219,6 @@ class HDFCBankAPI(BankAPI):
             self.throw(alert)
 
     def login_success(self):
-        self.logged_in = 1
-
         if self.doctype == "Bank Integration Settings":
             self.show_msg("Credentials verified successfully!")
             self.emit_js("setTimeout(() => {frappe.hide_msgprint()}, 2000);")
