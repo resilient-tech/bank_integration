@@ -231,7 +231,7 @@ class BankAPI:
         ):
             return None, None
 
-        for _ in range(timeout * 2):  
+        for _ in range(timeout * 2):
             files = glob.glob(os.path.join(self.download_dir, "*"))
             done = [f for f in files if not f.endswith(".crdownload")]
             if expected_filename:
@@ -252,7 +252,12 @@ class BankAPI:
             try:
                 shutil.rmtree(self.download_dir, ignore_errors=True)
             except Exception:
-                pass
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    "Failed to cleanup payment receipt download directory: {}".format(
+                        self.download_dir
+                    ),
+                )
 
 
 class AnyEC:

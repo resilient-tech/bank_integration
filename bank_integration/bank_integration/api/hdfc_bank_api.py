@@ -641,6 +641,7 @@ class HDFCBankAPI(BankAPI):
         details_button = self.get_element("showHideBtn", "id")
         details_button.click()
 
+        pdf_saved = False
         try:
             download_btn = self.br.find_element(
                 By.CSS_SELECTOR,
@@ -656,7 +657,11 @@ class HDFCBankAPI(BankAPI):
                     self.docname,
                     is_private=1,
                 )
+                pdf_saved = True
         except Exception:
+            pass
+
+        if not pdf_saved:
             save_file(
                 self.docname + " Online Payment Screenshot.png",
                 self.br.get_screenshot_as_png(),
