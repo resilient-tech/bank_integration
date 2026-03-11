@@ -250,7 +250,7 @@ class BankAPI:
 
         if hasattr(self, "download_dir") and self.download_dir:
             try:
-                shutil.rmtree(self.download_dir, ignore_errors=True)
+                shutil.rmtree(self.download_dir)
             except Exception:
                 frappe.log_error(
                     frappe.get_traceback(),
