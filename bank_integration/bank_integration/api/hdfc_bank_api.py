@@ -72,6 +72,7 @@ class HDFCBankAPI(BankAPI):
                     EC.visibility_of_element_located((By.NAME, "fldAnswer")),
                 ),
                 throw="ignore",
+                timeout=10,
             )
             # NOTE: The 'fldOldPass' and 'fldAnswer' conditions are not hit in the
             # current HDFC UI. We still include them here so future maintainers know

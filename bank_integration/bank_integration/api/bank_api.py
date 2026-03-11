@@ -23,7 +23,7 @@ class BankAPI:
         self,
         username=None,
         password=None,
-        timeout=10,
+        timeout=30,
         logged_in=0,
         doctype=None,
         docname=None,
