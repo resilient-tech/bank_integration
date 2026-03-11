@@ -339,6 +339,7 @@ class HDFCBankAPI(BankAPI):
                     "We were unable to complete the logout process on the bank website. Please manually log out from your online banking account to end the session safely."
                 )
         self.delete_cache()
+        self.cleanup_download_dir()
         self.br.quit()
 
     def make_payment(self):
@@ -639,13 +640,29 @@ class HDFCBankAPI(BankAPI):
         details_button = self.get_element("showHideBtn", "id")
         details_button.click()
 
-        save_file(
-            self.docname + " Online Payment Screenshot.png",
-            self.br.get_screenshot_as_png(),
-            self.doctype,
-            self.docname,
-            is_private=1,
-        )
+        try:
+            download_btn = self.br.find_element(
+                By.CSS_SELECTOR,
+                "button.down-btn.btn-link",
+            )
+            self.br.execute_script("arguments[0].click();", download_btn)
+            filename, content = self.wait_for_download(expected_filename="transfer.pdf")
+            if filename and content:
+                save_file(
+                    self.docname + " Payment Receipt.pdf",
+                    content,
+                    self.doctype,
+                    self.docname,
+                    is_private=1,
+                )
+        except Exception:
+            save_file(
+                self.docname + " Online Payment Screenshot.png",
+                self.br.get_screenshot_as_png(),
+                self.doctype,
+                self.docname,
+                is_private=1,
+            )
 
         ref_no = "-"
         if self.data.transfer_type == "Transfer within the bank":

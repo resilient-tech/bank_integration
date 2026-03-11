@@ -2,6 +2,9 @@
 # Copyright (c) 2018, Resilient Tech and contributors
 # For license information, please see license.txt
 
+import time
+import tempfile
+
 import frappe
 import bank_integration
 from frappe.utils.file_manager import save_file
@@ -37,7 +40,6 @@ class BankAPI:
         self.uid = uid or frappe.utils.random_string(7)
         self.cache_key = "bank_" + self.uid
         self.data = data
-        
 
         if getattr(self, "init"):
             self.init()
@@ -55,9 +57,22 @@ class BankAPI:
 
     def setup_browser(self):
         from selenium.webdriver.remote.remote_connection import RemoteConnection
-        if not isinstance(RemoteConnection._timeout, (int, float)) :
+
+        if not isinstance(RemoteConnection._timeout, (int, float)):
             RemoteConnection.set_timeout(90)
+
+        self.download_dir = tempfile.mkdtemp(prefix="bank_dl_")
+
         self.br = webdriver.Chrome(options=self.get_options())
+
+        # Enable downloads for headless Chrome
+        self.br.execute_cdp_cmd(
+            "Page.setDownloadBehavior",
+            {
+                "behavior": "allow",
+                "downloadPath": self.download_dir,
+            },
+        )
 
     def get_options(self):
         options = Options()
@@ -67,6 +82,14 @@ class BankAPI:
             "--user-agent=Mozilla/5.0 (X11; Linux x86_64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/121.0.0.0 Safari/537.36"
+        )
+        options.add_experimental_option(
+            "prefs",
+            {
+                "download.default_directory": self.download_dir,
+                "download.prompt_for_download": False,
+                "plugins.always_open_pdf_externally": True,
+            },
         )
 
         if not frappe.conf.developer_mode:
@@ -103,6 +126,8 @@ class BankAPI:
 
         self.data = frappe._dict(cached["data"] or {})
         resume_info = frappe._dict(cached["resume_info"])
+
+        self.download_dir = cached.get("download_dir") or ""
 
         self.br = webdriver.Remote(
             command_executor=resume_info.executor_url, options=self.get_options()
@@ -178,7 +203,11 @@ class BankAPI:
     def save_for_later(self):
         frappe.cache().set_value(
             self.cache_key,
-            {"resume_info": self.get_resume_info(), "data": self.data},
+            {
+                "resume_info": self.get_resume_info(),
+                "data": self.data,
+                "download_dir": getattr(self, "download_dir", None),
+            },
             user=frappe.session.user,
         )
 
@@ -189,6 +218,41 @@ class BankAPI:
 
         if hasattr(bank_integration, self.cache_key):
             delattr(bank_integration, self.cache_key)
+
+    def wait_for_download(self, expected_filename=None, timeout=30):
+        """Wait for a file to finish downloading in self.download_dir.
+        Returns (filename, file_content_bytes) or (None, None) on timeout.
+        Ignores Chrome's partial .crdownload files.
+        """
+        import os, glob
+
+        if not getattr(self, "download_dir", None) or not os.path.isdir(
+            self.download_dir
+        ):
+            return None, None
+
+        for _ in range(timeout * 2):  
+            files = glob.glob(os.path.join(self.download_dir, "*"))
+            done = [f for f in files if not f.endswith(".crdownload")]
+            if expected_filename:
+                done = [f for f in done if os.path.basename(f) == expected_filename]
+            if done:
+                filepath = done[0]
+                with open(filepath, "rb") as f:
+                    content = f.read()
+                return os.path.basename(filepath), content
+            time.sleep(0.5)
+        return None, None
+
+    def cleanup_download_dir(self):
+        """Remove the temp download directory and its contents."""
+        import shutil
+
+        if hasattr(self, "download_dir") and self.download_dir:
+            try:
+                shutil.rmtree(self.download_dir, ignore_errors=True)
+            except Exception:
+                pass
 
 
 class AnyEC:
