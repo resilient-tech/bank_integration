@@ -169,7 +169,9 @@ class HDFCBankAPI(BankAPI):
             get_otp_btn.click()
         elif "mfa-get-otp-btn" == self.br._found_element[-1]:
             try:
-                email_mobile_otp_radio = self.get_element("channel-BOTH", "id",now=True)
+                email_mobile_otp_radio = self.get_element(
+                    "channel-BOTH", "id", now=True
+                )
                 email_mobile_otp_radio.click()
             except Exception:
                 pass
@@ -274,6 +276,32 @@ class HDFCBankAPI(BankAPI):
         """)
         if submit_btn:
             self.br.execute_script("arguments[0].click();", submit_btn)
+            incorrect_otp_xpath = (
+                " //span[@class='text-danger' and contains(normalize-space(),'You have entered incorrect OTP.')]"
+            )
+            invalid_otp_length_xpath = "//span[contains(normalize-space(),'Please enter the 6-digit OTP') and not(contains(@class,'d-none'))]"
+
+            self.wait_until(
+                AnyEC(
+                    EC.visibility_of_element_located((By.XPATH, incorrect_otp_xpath)),
+                    EC.visibility_of_element_located(
+                        (By.XPATH, invalid_otp_length_xpath)
+                    ),
+                ),
+                throw="ignore",
+                timeout=5,
+            )
+
+            found = self.br._found_element
+
+            if (
+                (found and found[-1] == invalid_otp_length_xpath)
+                or (found and found[-1] == incorrect_otp_xpath)
+            ):  
+
+                self.throw(
+                    "You have entered an incorrect otp. Please start the payment process again"
+                )
         else:
             self.throw("Could not find OTP Submit button.", screenshot=True)
 
@@ -368,7 +396,9 @@ class HDFCBankAPI(BankAPI):
             )
             option.click()
         except Exception:
-            self.throw("Could not find party's bank account in the list of Payees. Please add it manually")
+            self.throw(
+                "Could not find party's bank account in the list of Payees. Please add it manually"
+            )
 
         self._select_from_account_if_needed()
 
