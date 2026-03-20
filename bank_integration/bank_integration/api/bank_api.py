@@ -41,6 +41,9 @@ class BankAPI:
         self.cache_key = "bank_" + self.uid
         self.data = data
 
+        # will be set in setup_browser()
+        self.download_dir = ""
+
         if getattr(self, "init"):
             self.init()
 
@@ -238,9 +241,13 @@ class BankAPI:
                 done = [f for f in done if os.path.basename(f) == expected_filename]
             if done:
                 filepath = done[0]
-                with open(filepath, "rb") as f:
-                    content = f.read()
-                return os.path.basename(filepath), content
+                size1 = os.path.getsize(filepath)
+                time.sleep(0.2)
+                size2 = os.path.getsize(filepath)
+                if size1 == size2 and size1 > 0:
+                    with open(filepath, "rb") as f:
+                        content = f.read()
+                    return os.path.basename(filepath), content
             time.sleep(0.5)
         return None, None
 

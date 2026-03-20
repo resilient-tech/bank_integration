@@ -648,6 +648,7 @@ class HDFCBankAPI(BankAPI):
                 "button.down-btn.btn-link",
             )
             self.br.execute_script("arguments[0].click();", download_btn)
+            # make sure to clear the download directory before starting a new payment in bulk payments
             filename, content = self.wait_for_download(expected_filename="transfer.pdf")
             if filename and content:
                 save_file(
@@ -659,7 +660,7 @@ class HDFCBankAPI(BankAPI):
                 )
                 pdf_saved = True
         except Exception:
-            pass
+            frappe.log_error(frappe.get_traceback(), "PDF receipt download failed; falling back to screenshot")
 
         if not pdf_saved:
             save_file(
