@@ -85,14 +85,16 @@ class BankAPI:
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/121.0.0.0 Safari/537.36"
         )
-        options.add_experimental_option(
-            "prefs",
-            {
-                "download.default_directory": self.download_dir,
-                "download.prompt_for_download": False,
-                "plugins.always_open_pdf_externally": True,
-            },
-        )
+
+        if self.download_dir and os.path.isdir(self.download_dir):
+            options.add_experimental_option(
+                "prefs",
+                {
+                    "download.default_directory": self.download_dir,
+                    "download.prompt_for_download": False,
+                    "plugins.always_open_pdf_externally": True,
+                },
+            )
 
         if not frappe.conf.developer_mode:
             options.add_argument("--headless=new")
@@ -134,13 +136,14 @@ class BankAPI:
         self.br = webdriver.Remote(
             command_executor=resume_info.executor_url, options=self.get_options()
         )
-        self.br.execute_cdp_cmd(
-            "Page.setDownloadBehavior",
-            {
-                "behavior": "allow",
-                "downloadPath": self.download_dir,
-            },
-        )
+        if self.download_dir and os.path.isdir(self.download_dir):
+            self.br.execute_cdp_cmd(
+                "Page.setDownloadBehavior",
+                {
+                    "behavior": "allow",
+                    "downloadPath": self.download_dir,
+                },
+            )
         self.br.close()
         self.br.session_id = resume_info.session_id
 
