@@ -340,7 +340,7 @@ class HDFCBankAPI(BankAPI):
                     "We were unable to complete the logout process on the bank website. Please manually log out from your online banking account to end the session safely."
                 )
         self.delete_cache()
-        self.cleanup_download_dir()
+        self.cleanup_download_dir(delete_dir=True)
         self.br.quit()
 
     def make_payment(self):
@@ -643,6 +643,7 @@ class HDFCBankAPI(BankAPI):
 
         pdf_saved = False
         try:
+            self.cleanup_download_dir(delete_dir=False)
             download_btn = self.br.find_element(
                 By.CSS_SELECTOR,
                 "button.down-btn.btn-link",

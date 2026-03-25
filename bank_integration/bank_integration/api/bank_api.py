@@ -4,6 +4,8 @@
 
 import time
 import tempfile
+import os
+import glob
 
 import frappe
 import bank_integration
@@ -40,9 +42,6 @@ class BankAPI:
         self.uid = uid or frappe.utils.random_string(7)
         self.cache_key = "bank_" + self.uid
         self.data = data
-
-        # will be set in setup_browser()
-        self.download_dir = ""
 
         if getattr(self, "init"):
             self.init()
@@ -134,6 +133,13 @@ class BankAPI:
 
         self.br = webdriver.Remote(
             command_executor=resume_info.executor_url, options=self.get_options()
+        )
+        self.br.execute_cdp_cmd(
+            "Page.setDownloadBehavior",
+            {
+                "behavior": "allow",
+                "downloadPath": self.download_dir,
+            },
         )
         self.br.close()
         self.br.session_id = resume_info.session_id
@@ -227,7 +233,6 @@ class BankAPI:
         Returns (filename, file_content_bytes) or (None, None) on timeout.
         Ignores Chrome's partial .crdownload files.
         """
-        import os, glob
 
         if not getattr(self, "download_dir", None) or not os.path.isdir(
             self.download_dir
@@ -251,13 +256,22 @@ class BankAPI:
             time.sleep(0.5)
         return None, None
 
-    def cleanup_download_dir(self):
-        """Remove the temp download directory and its contents."""
+    def cleanup_download_dir(self, delete_dir=False):
+        """Clear the contents of the temp download directory.
+        If delete_dir is True, also remove the directory itself.
+        """
+        import os
         import shutil
 
         if hasattr(self, "download_dir") and self.download_dir:
             try:
-                shutil.rmtree(self.download_dir)
+                for entry in os.scandir(self.download_dir):
+                    if entry.is_dir(follow_symlinks=False):
+                        shutil.rmtree(entry.path)
+                    else:
+                        os.remove(entry.path)
+                if delete_dir:
+                    os.rmdir(self.download_dir)
             except Exception:
                 frappe.log_error(
                     frappe.get_traceback(),
