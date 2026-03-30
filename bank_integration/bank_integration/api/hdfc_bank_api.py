@@ -384,6 +384,7 @@ class HDFCBankAPI(BankAPI):
                     "We were unable to complete the logout process on the bank website. Please manually log out from your online banking account to end the session safely."
                 )
         self.delete_cache()
+        self.cleanup_download_dir(delete_dir=True)
         self.br.quit()
 
     @set_correct_payment_data
@@ -719,13 +720,36 @@ class HDFCBankAPI(BankAPI):
         details_button = self.get_element("showHideBtn", "id")
         details_button.click()
 
-        save_file(
-            self.data.docname + " Online Payment Screenshot.png",
-            self.br.get_screenshot_as_png(),
-            "Payment Entry",
-            self.data.docname,
-            is_private=1,
-        )
+        pdf_saved = False
+        try:
+            self.cleanup_download_dir(delete_dir=False)
+            download_btn = self.br.find_element(
+                By.CSS_SELECTOR,
+                "button.down-btn.btn-link",
+            )
+            self.br.execute_script("arguments[0].click();", download_btn)
+            # make sure to clear the download directory before starting a new payment in bulk payments
+            filename, content = self.wait_for_download(expected_filename="transfer.pdf")
+            if filename and content:
+                save_file(
+                    self.data.docname + " Payment Receipt.pdf",
+                    content,
+                    "Payment Entry",
+                    self.data.docname,
+                    is_private=1,
+                )
+                pdf_saved = True
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "PDF receipt download failed; falling back to screenshot")
+
+        if not pdf_saved:
+            save_file(
+                self.data.docname + " Online Payment Screenshot.png",
+                self.br.get_screenshot_as_png(),
+                "Payment Entry",
+                self.data.docname,
+                is_private=1,
+            )
 
         ref_no = "-"
         if self.data.transfer_type == "Transfer within the bank":
