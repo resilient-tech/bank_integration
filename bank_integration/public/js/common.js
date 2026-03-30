@@ -1,8 +1,15 @@
 frappe.provide('bi');
 frappe.provide("modifyMethod");
 
-bi.listenForOtp = function (frm) {
-	frappe.realtime.on("get_bank_otp", function(data){
+bi.listenForOtp = function (frm,is_bulk=false) {
+	// frm will contain listview object if it is bulk_payment, 
+	// otherwise it will contain form object. 
+	let bulk=""
+	if(is_bulk){
+		bulk="_bulk"
+	}
+	frappe.realtime.on("get_bank_otp" + bulk, function(data){
+
 		if (!frm || data.uid != frm._uid || frm.otp_requested) return;
 
 		frm.otp_requested = true;
@@ -23,8 +30,8 @@ bi.listenForOtp = function (frm) {
 					otp: _data.otp,
 					bank_name: data.bank_name,
 					uid: data.uid,
-					doctype: frm.doc.doctype,
-					docname: frm.doc.name,
+					doctype: frm?.doc?.doctype || frm?.doctype,
+					docname: frm?.doc?.name || null,
 					logged_in: data.logged_in},
 			});
 			frappe.msgprint("Verifying OTP!!")

@@ -32,6 +32,7 @@ class BankAPI:
         uid=None,
         resume=False,
         data=None,
+        bulk_payments=None,
     ):
         self.username = username
         self.password = password
@@ -42,6 +43,12 @@ class BankAPI:
         self.uid = uid or frappe.utils.random_string(7)
         self.cache_key = "bank_" + self.uid
         self.data = data
+        self.bulk_payments = bulk_payments
+        self.remove_payment = True
+        if bulk_payments is None:
+            self.is_bulk_payments = False
+        else:
+            self.is_bulk_payments = True
 
         if getattr(self, "init"):
             self.init()
@@ -104,18 +111,14 @@ class BankAPI:
 
         return options
 
-    def emit_js(self, js):
-        js = "if (cur_frm && cur_frm._uid === '{0}') {{ {1} }}".format(self.uid, js)
+    def show_msg(self, msg):
         frappe.publish_realtime(
-            "eval_js",
-            js,
+            "bi_action",
+            {"message": msg, "uid": self.uid, "action": "show_message"},
             user=frappe.session.user,
             doctype=self.doctype,
             docname=self.docname,
         )
-
-    def show_msg(self, msg):
-        self.emit_js("frappe.update_msgprint(`{0}`);".format(msg))
 
     def get_resume_info(self):
         return {
@@ -129,6 +132,14 @@ class BankAPI:
             self.throw("Unable to find session info in cache")
 
         self.data = frappe._dict(cached["data"] or {})
+
+        if "bulk_data" in cached:
+            self.bulk_payments = cached["bulk_data"]
+        if "is_bulk_payments" in cached:
+            self.is_bulk_payments = cached["is_bulk_payments"]
+        if "remove_payment" in cached:
+            self.remove_payment = cached["remove_payment"]
+
         resume_info = frappe._dict(cached["resume_info"])
 
         self.download_dir = cached.get("download_dir") or ""
@@ -194,7 +205,6 @@ class BankAPI:
             raise
 
     def throw(self, message, screenshot=False):
-        js = "frappe.hide_msgprint();"
         if screenshot:
             save_file(
                 "payment_error_{}.png".format(self.uid),
@@ -205,24 +215,41 @@ class BankAPI:
             )
 
             frappe.db.commit()
-            js += " if (cur_frm) cur_frm.reload_doc();"
             message += " (See attached screenshot)"
 
-        self.emit_js(js)
+        frappe.publish_realtime(
+            "bi_action",
+            {"docname": self.docname, "uid": self.uid, "action": "reload_doc"},
+            user=frappe.session.user,
+            doctype=self.doctype,
+            docname=self.docname,
+        )
         self.logout()
         frappe.throw(message)
 
     def save_for_later(self):
-        frappe.cache().set_value(
-            self.cache_key,
-            {
-                "resume_info": self.get_resume_info(),
+        if not self.is_bulk_payments:
+            frappe.cache().set_value(
+                self.cache_key,
+                {"resume_info": self.get_resume_info(),
                 "data": self.data,
                 "download_dir": getattr(self, "download_dir", None),
-            },
-            user=frappe.session.user,
-        )
-
+                },
+                user=frappe.session.user,
+            )
+        else:
+            frappe.cache().set_value(
+                self.cache_key,
+                {
+                    "resume_info": self.get_resume_info(),
+                    "data": self.data,
+                    "bulk_data": self.bulk_payments,
+                    "is_bulk_payments": self.is_bulk_payments,
+                    "remove_payment":self.remove_payment,
+                    "download_dir": getattr(self, "download_dir", None),
+                },
+                user=frappe.session.user,
+            )
         setattr(bank_integration, self.cache_key, self)
 
     def delete_cache(self):
