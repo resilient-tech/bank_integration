@@ -147,14 +147,6 @@ class BankAPI:
         self.br = webdriver.Remote(
             command_executor=resume_info.executor_url, options=self.get_options()
         )
-        if self.download_dir and os.path.isdir(self.download_dir):
-            self.br.execute_cdp_cmd(
-                "Page.setDownloadBehavior",
-                {
-                    "behavior": "allow",
-                    "downloadPath": self.download_dir,
-                },
-            )
         self.br.close()
         self.br.session_id = resume_info.session_id
 
