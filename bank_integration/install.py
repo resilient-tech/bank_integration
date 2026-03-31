@@ -183,7 +183,7 @@ custom_fields = {
             'fieldname': 'transfer_type',
             'label': 'Bank Transfer Type',
             'fieldtype': 'Select',
-            'options': '\nTransfer within the bank\nTransfer to other bank (NEFT)',
+            'options': '\nTransfer within the bank\nTransfer to other bank (NEFT)\nTransfer to other bank (IMPS)\nTransfer to other bank (RTGS)',
             'depends_on': "eval:doc.pay_now",
             'insert_after': 'payment_desc',
             'print_hide': 1,
@@ -195,7 +195,7 @@ custom_fields = {
             'fieldtype': 'Select',
             'options': '\nEmail\nMobile',
             'depends_on': "eval:(doc.pay_now \
-                && doc.transfer_type=='Transfer to other bank (NEFT)')",
+                && doc.transfer_type && doc.transfer_type.includes('Transfer to other bank'))",
             'insert_after': 'transfer_type',
             'print_hide': 1,
             'permlevel': 7
@@ -205,7 +205,7 @@ custom_fields = {
             'label': 'Email Address',
             'fieldtype': 'Data',
             'depends_on': "eval:(doc.pay_now \
-                && doc.transfer_type=='Transfer to other bank (NEFT)' \
+                && doc.transfer_type && doc.transfer_type.includes('Transfer to other bank') \
                 && doc.comm_type=='Email')",
             'insert_after': 'comm_type',
             'print_hide': 1,
@@ -216,7 +216,7 @@ custom_fields = {
             'label': 'Mobile Number',
             'fieldtype': 'Data',
             'depends_on': "eval:(doc.pay_now \
-                && doc.transfer_type=='Transfer to other bank (NEFT)' \
+                && doc.transfer_type && doc.transfer_type.includes('Transfer to other bank') \
                 && doc.comm_type=='Mobile')",
             'insert_after': 'comm_email',
             'print_hide': 1,

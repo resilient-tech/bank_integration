@@ -19,6 +19,7 @@ from selenium.common.exceptions import (
     TimeoutException,
 )
 from selenium.webdriver.common.keys import Keys
+from .decorators import set_correct_payment_data
 
 
 class HDFCBankAPI(BankAPI):
@@ -35,8 +36,11 @@ class HDFCBankAPI(BankAPI):
         cust_id.send_keys(self.username, Keys.ENTER)
 
         self.br.switch_to.default_content()
-        pass_input = self.get_element("password", "id")
-
+        pass_input = self.get_element("password", "id", timeout=10, throw="ignore")
+        if pass_input is None:
+            self.throw(
+                "Credentials are incorrect. Please verify the username & password in Bank Integration Settings."
+            )
         pass_input.send_keys(self.password, Keys.ENTER)
 
         self.br.switch_to.default_content()
@@ -81,6 +85,15 @@ class HDFCBankAPI(BankAPI):
             found = self.br._found_element
 
             if not found:
+                if self.get_element(
+                    '//*[@id="bb-modal-dialog-header" and normalize-space(text())="Please reset your password!"]',
+                    "xpath",
+                    now=True,
+                    throw="ignore",
+                ):
+                    self.throw(
+                        "Please reset your password manually at the hdfc netbanking portal"
+                    )
                 if self.br.find_elements(By.ID, "mfa-get-otp-btn"):
                     self.process_otp()
                     return
@@ -191,8 +204,14 @@ class HDFCBankAPI(BankAPI):
             except Exception:
                 pass
 
+        # here both listeners for list and form view and kept separate as they require
+        # cur_list and cur_frm respectively
+        bulk = ""
+        if self.is_bulk_payments:
+            bulk = "_bulk"
+
         frappe.publish_realtime(
-            "get_bank_otp",
+            "get_bank_otp" + bulk,
             {
                 "message": input_msg,
                 "uid": self.uid,
@@ -245,16 +264,16 @@ class HDFCBankAPI(BankAPI):
 
         return question_map
 
-    def submit_otp_or_answers(self, otp=None, answers=None):
+    def submit_otp_or_answers(self, otp=None, answers=None, from_payment=False):
         if not otp and not answers:
             self.throw("Invalid response received. Exiting..")
 
         if otp:
-            self.submit_otp(otp)
+            self.submit_otp(otp, from_payment)
         else:
             self.submit_answers(answers)
 
-    def submit_otp(self, otp):
+    def submit_otp(self, otp, from_payment):
         # There can be multiple #otpValue elements in the DOM (one hidden
         # behind the modal, one visible inside it). Pick the visible one.
         otp_field = self.br.execute_script("""
@@ -306,6 +325,23 @@ class HDFCBankAPI(BankAPI):
         else:
             self.throw("Could not find OTP Submit button.", screenshot=True)
 
+        # checks for proceed btn after otp submit in login workflow only
+        if not from_payment:
+            try:
+                self.br.switch_to.default_content()
+                proceed_btn = self.get_element(
+                    "proceedBtn", "id", timeout=8, throw="ignore"
+                )
+                if proceed_btn:
+                    proceed_btn.click()
+                    # proceed btn prompt comes twice in the UI
+                    proceed_btn = self.get_element(
+                        "proceedBtn", "id", timeout=8, throw="ignore"
+                    )
+                    proceed_btn.click()
+            except Exception:
+                pass
+
     def submit_answers(self, answers):
         field_map = self.get_question_map(True)
         for fieldname, element in field_map.items():
@@ -341,7 +377,13 @@ class HDFCBankAPI(BankAPI):
 
         if self.doctype == "Bank Integration Settings":
             self.show_msg("Credentials verified successfully!")
-            self.emit_js("setTimeout(() => {frappe.hide_msgprint()}, 2000);")
+            frappe.publish_realtime(
+                "bi_action",
+                {"uid": self.uid, "action": "login_success"},
+                user=frappe.session.user,
+                doctype=self.doctype,
+                docname=self.docname,
+            )
             self.logout()
         elif self.doctype == "Payment Entry":
             self.show_msg("Login Successful! Processing payment..")
@@ -369,21 +411,25 @@ class HDFCBankAPI(BankAPI):
                     "We were unable to complete the logout process on the bank website. Please manually log out from your online banking account to end the session safely."
                 )
         self.delete_cache()
+        self.cleanup_download_dir(delete_dir=True)
         self.br.quit()
 
+    @set_correct_payment_data
     def make_payment(self):
+        self.remove_payment = False
         self.br.switch_to.default_content()
-        clicked = self.br.execute_script("""
-            var el = document.querySelector("a[routerlink='/transfers/send-money']");
-            if (el) { el.click(); return true; }
-            return false;
-        """)
-        if not clicked:
-            self.throw(
-                "Could not find the 'Send Money' navigation link. The HDFC portal layout may have changed."
-            )
+        if "/transfers/send-money" not in self.br.current_url:
+            clicked = self.br.execute_script("""
+                var el = document.querySelector("a[routerlink='/transfers/send-money']");
+                if (el) { el.click(); return true; }
+                return false;
+            """)
+            if not clicked:
+                self.throw(
+                    "Could not find the 'Send Money' navigation link. The HDFC portal layout may have changed."
+                )
 
-        self.wait_until(EC.url_contains("/transfers/send-money"))
+            self.wait_until(EC.url_contains("/transfers/send-money"))
 
         to_account_input_box = self.get_element("typeahead-template", "id")
         to_account_input_box.click()
@@ -405,9 +451,12 @@ class HDFCBankAPI(BankAPI):
 
         if self.data.transfer_type == "Transfer within the bank":
             self.make_payment_within_bank()
-        elif self.data.transfer_type == "Transfer to other bank (NEFT)":
-            self.make_neft_payment()
+        elif self.data.transfer_type and self.data.transfer_type.startswith(
+            "Transfer to other bank"
+        ):
+            self.make_inter_bank_payment()
 
+    @set_correct_payment_data
     def _select_from_account_if_needed(self):
         """
         After the to-account is selected, HDFC may show an ng-select dropdown
@@ -554,6 +603,7 @@ class HDFCBankAPI(BankAPI):
         else:
             self.payment_success()
 
+    @set_correct_payment_data
     def make_payment_within_bank(self):
         amt = self.get_element("transfer-amount-input", "id")
         amt.clear()
@@ -589,10 +639,41 @@ class HDFCBankAPI(BankAPI):
         confirm_btn.click()
         self._handle_post_confirm_payment_state()
 
-    def make_neft_payment(self):
+    @set_correct_payment_data
+    def make_inter_bank_payment(self):
+
         amt = self.get_element("transfer-amount-input", "id")
         amt.clear()
         amt.send_keys("%.2f" % self.data.amount)
+
+        try:
+            match self.data.transfer_type:
+                case "Transfer to other bank (NEFT)":
+                    select_neft = self.get_element(
+                        "//div[contains(@class,'transfer-mode-')][.//label[normalize-space()='NEFT']]",
+                        "xpath",
+                    )
+                    select_neft.click()
+
+                case "Transfer to other bank (IMPS)":
+                    select_imps = self.get_element(
+                        "//div[contains(@class,'transfer-mode-')][.//label[normalize-space()='IMPS']]",
+                        "xpath",
+                    )
+                    select_imps.click()
+
+                case "Transfer to other bank (RTGS)":
+                    select_rtgs = self.get_element(
+                        "//div[contains(@class,'transfer-mode-')][.//label[normalize-space()='RTGS']]",
+                        "xpath",
+                    )
+                    select_rtgs.click()
+
+        except Exception:
+            self.throw(
+                "Unable to find the payment transfer type selection buttons. "
+                "The payment could not be completed, and the system logged out from the website."
+            )
 
         desc = self.get_element('input[data-role="input"]', "css_selector")
         desc.clear()
@@ -646,16 +727,11 @@ class HDFCBankAPI(BankAPI):
 
     def continue_payment(self, otp=None, answers=None):
         self.br.switch_to.default_content()
-        self.submit_otp_or_answers(otp, answers)
+        self.submit_otp_or_answers(otp, answers, from_payment=True)
 
         try:
             self.br.switch_to.default_content()
-
-            if self.data.transfer_type == "Transfer within the bank":
-                self.get_element("span.success-tick", "css_selector", throw=False)
-
-            elif self.data.transfer_type == "Transfer to other bank (NEFT)":
-                self.get_element("span.success-tick", "css_selector", throw=False)
+            self.get_element("span.success-tick", "css_selector", throw=False)
 
         except TimeoutException:
             self.throw(
@@ -671,13 +747,36 @@ class HDFCBankAPI(BankAPI):
         details_button = self.get_element("showHideBtn", "id")
         details_button.click()
 
-        save_file(
-            self.docname + " Online Payment Screenshot.png",
-            self.br.get_screenshot_as_png(),
-            self.doctype,
-            self.docname,
-            is_private=1,
-        )
+        pdf_saved = False
+        try:
+            self.cleanup_download_dir(delete_dir=False)
+            download_btn = self.br.find_element(
+                By.CSS_SELECTOR,
+                "button.down-btn.btn-link",
+            )
+            self.br.execute_script("arguments[0].click();", download_btn)
+            # make sure to clear the download directory before starting a new payment in bulk payments
+            filename, content = self.wait_for_download(expected_filename="transfer.pdf")
+            if filename and content:
+                save_file(
+                    self.data.docname + " Payment Receipt.pdf",
+                    content,
+                    "Payment Entry",
+                    self.data.docname,
+                    is_private=1,
+                )
+                pdf_saved = True
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "PDF receipt download failed; falling back to screenshot")
+
+        if not pdf_saved:
+            save_file(
+                self.data.docname + " Online Payment Screenshot.png",
+                self.br.get_screenshot_as_png(),
+                "Payment Entry",
+                self.data.docname,
+                is_private=1,
+            )
 
         ref_no = "-"
         if self.data.transfer_type == "Transfer within the bank":
@@ -697,7 +796,7 @@ class HDFCBankAPI(BankAPI):
             try:
                 ref_no = (
                     self.get_element(
-                        '//div[contains(@class,"bb-support--subtitle") and contains(normalize-space(text()),"Reference")]/following-sibling::div[contains(@class,"bb-text-medium-bold")]',
+                        '//div[contains(@class,"bb-support--subtitle") and (contains(normalize-space(text()),"Reference") or contains(normalize-space(text()),"Transaction ID"))]/following-sibling::div[contains(@class,"bb-text-medium-bold")]',
                         "xpath",
                         throw=False,
                     ).text
@@ -706,15 +805,74 @@ class HDFCBankAPI(BankAPI):
             except Exception:
                 pass
 
-        frappe.publish_realtime(
-            "payment_success",
-            {"ref_no": ref_no, "uid": self.uid},
-            user=frappe.session.user,
-            doctype="Payment Entry",
-            docname=self.docname,
-        )
-
+        self.remove_payment = True
+        payment_entry_doc = frappe.get_doc("Payment Entry", self.data.docname)
+        payment_entry_doc.online_payment_status = "Paid"
+        payment_entry_doc.reference_no = ref_no
+        payment_entry_doc.submit()
         frappe.db.commit()
+
+        # these are kept separate as one requires frm object which is not present in list view
+        if not self.is_bulk_payments:
+            frappe.publish_realtime(
+                "bi_action",
+                {
+                    "ref_no": ref_no,
+                    "uid": self.uid,
+                    "action": "payment_success",
+                },
+                user=frappe.session.user,
+                doctype="Payment Entry",
+                docname=self.data.docname,
+            )
+        else:
+            if getattr(self, "bulk_payments", None):
+                is_last = False
+            else:
+                is_last = True
+
+            frappe.publish_realtime(
+                "bi_action",
+                {
+                    "ref_no": ref_no,
+                    "uid": self.uid,
+                    "paid_amount": self.data.amount,
+                    "docname": self.data.docname,
+                    "party_name": self.data.party_name,
+                    "action": "payment_success_bulk",
+                    "is_last": is_last,
+                },
+                user=frappe.session.user,
+                doctype="Payment Entry",
+                docname=self.data.docname,
+            )
+
+        if self.is_bulk_payments:
+            if getattr(self, "bulk_payments", None):
+                send_money_btn = self.get_element(
+                    "//button[normalize-space(text())='Go to Send Money' and contains(@class, 'btn-primary')]",
+                    "xpath",
+                    now=True,
+                    throw="ignore",
+                )
+                if send_money_btn:
+                    self.br.execute_script("arguments[0].click();", send_money_btn)
+                else:
+                    self.throw("Send Money button not found.")
+                self.make_payment()
+                return
+            else:
+                frappe.publish_realtime(
+                    "bi_action",
+                    {
+                        "uid": self.uid,
+                        "action": "bulk_payment_completed",
+                    },
+                    user=frappe.session.user,
+                    doctype=self.doctype,
+                    docname=self.docname,
+                )
+
         self.logout()
 
     def fetch_transactions(self, from_date=None):

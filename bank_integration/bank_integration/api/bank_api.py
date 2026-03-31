@@ -2,6 +2,11 @@
 # Copyright (c) 2018, Resilient Tech and contributors
 # For license information, please see license.txt
 
+import time
+import tempfile
+import os
+import glob
+
 import frappe
 import bank_integration
 from frappe.utils.file_manager import save_file
@@ -27,6 +32,7 @@ class BankAPI:
         uid=None,
         resume=False,
         data=None,
+        bulk_payments=None,
     ):
         self.username = username
         self.password = password
@@ -37,7 +43,12 @@ class BankAPI:
         self.uid = uid or frappe.utils.random_string(7)
         self.cache_key = "bank_" + self.uid
         self.data = data
-        
+        self.bulk_payments = bulk_payments
+        self.remove_payment = True
+        if bulk_payments is None:
+            self.is_bulk_payments = False
+        else:
+            self.is_bulk_payments = True
 
         if getattr(self, "init"):
             self.init()
@@ -55,9 +66,22 @@ class BankAPI:
 
     def setup_browser(self):
         from selenium.webdriver.remote.remote_connection import RemoteConnection
-        if not isinstance(RemoteConnection._timeout, (int, float)) :
+
+        if not isinstance(RemoteConnection._timeout, (int, float)):
             RemoteConnection.set_timeout(90)
+
+        self.download_dir = tempfile.mkdtemp(prefix="bank_dl_")
+
         self.br = webdriver.Chrome(options=self.get_options())
+
+        # Enable downloads for headless Chrome
+        self.br.execute_cdp_cmd(
+            "Page.setDownloadBehavior",
+            {
+                "behavior": "allow",
+                "downloadPath": self.download_dir,
+            },
+        )
 
     def get_options(self):
         options = Options()
@@ -69,6 +93,16 @@ class BankAPI:
             "Chrome/121.0.0.0 Safari/537.36"
         )
 
+        if self.download_dir and os.path.isdir(self.download_dir):
+            options.add_experimental_option(
+                "prefs",
+                {
+                    "download.default_directory": self.download_dir,
+                    "download.prompt_for_download": False,
+                    "plugins.always_open_pdf_externally": True,
+                },
+            )
+
         if not frappe.conf.developer_mode:
             options.add_argument("--headless=new")
             options.add_argument("--no-sandbox")
@@ -77,18 +111,14 @@ class BankAPI:
 
         return options
 
-    def emit_js(self, js):
-        js = "if (cur_frm && cur_frm._uid === '{0}') {{ {1} }}".format(self.uid, js)
+    def show_msg(self, msg):
         frappe.publish_realtime(
-            "eval_js",
-            js,
+            "bi_action",
+            {"message": msg, "uid": self.uid, "action": "show_message"},
             user=frappe.session.user,
             doctype=self.doctype,
             docname=self.docname,
         )
-
-    def show_msg(self, msg):
-        self.emit_js("frappe.update_msgprint(`{0}`);".format(msg))
 
     def get_resume_info(self):
         return {
@@ -102,7 +132,17 @@ class BankAPI:
             self.throw("Unable to find session info in cache")
 
         self.data = frappe._dict(cached["data"] or {})
+
+        if "bulk_data" in cached:
+            self.bulk_payments = cached["bulk_data"]
+        if "is_bulk_payments" in cached:
+            self.is_bulk_payments = cached["is_bulk_payments"]
+        if "remove_payment" in cached:
+            self.remove_payment = cached["remove_payment"]
+
         resume_info = frappe._dict(cached["resume_info"])
+
+        self.download_dir = cached.get("download_dir") or ""
 
         self.br = webdriver.Remote(
             command_executor=resume_info.executor_url, options=self.get_options()
@@ -157,7 +197,6 @@ class BankAPI:
             raise
 
     def throw(self, message, screenshot=False):
-        js = "frappe.hide_msgprint();"
         if screenshot:
             save_file(
                 "payment_error_{}.png".format(self.uid),
@@ -168,20 +207,41 @@ class BankAPI:
             )
 
             frappe.db.commit()
-            js += " if (cur_frm) cur_frm.reload_doc();"
             message += " (See attached screenshot)"
 
-        self.emit_js(js)
+        frappe.publish_realtime(
+            "bi_action",
+            {"docname": self.docname, "uid": self.uid, "action": "reload_doc"},
+            user=frappe.session.user,
+            doctype=self.doctype,
+            docname=self.docname,
+        )
         self.logout()
         frappe.throw(message)
 
     def save_for_later(self):
-        frappe.cache().set_value(
-            self.cache_key,
-            {"resume_info": self.get_resume_info(), "data": self.data},
-            user=frappe.session.user,
-        )
-
+        if not self.is_bulk_payments:
+            frappe.cache().set_value(
+                self.cache_key,
+                {"resume_info": self.get_resume_info(),
+                "data": self.data,
+                "download_dir": getattr(self, "download_dir", None),
+                },
+                user=frappe.session.user,
+            )
+        else:
+            frappe.cache().set_value(
+                self.cache_key,
+                {
+                    "resume_info": self.get_resume_info(),
+                    "data": self.data,
+                    "bulk_data": self.bulk_payments,
+                    "is_bulk_payments": self.is_bulk_payments,
+                    "remove_payment":self.remove_payment,
+                    "download_dir": getattr(self, "download_dir", None),
+                },
+                user=frappe.session.user,
+            )
         setattr(bank_integration, self.cache_key, self)
 
     def delete_cache(self):
@@ -189,6 +249,58 @@ class BankAPI:
 
         if hasattr(bank_integration, self.cache_key):
             delattr(bank_integration, self.cache_key)
+
+    def wait_for_download(self, expected_filename=None, timeout=30):
+        """Wait for a file to finish downloading in self.download_dir.
+        Returns (filename, file_content_bytes) or (None, None) on timeout.
+        Ignores Chrome's partial .crdownload files.
+        """
+
+        if not getattr(self, "download_dir", None) or not os.path.isdir(
+            self.download_dir
+        ):
+            return None, None
+
+        for _ in range(timeout * 2):
+            files = glob.glob(os.path.join(self.download_dir, "*"))
+            done = [f for f in files if not f.endswith(".crdownload")]
+            if expected_filename:
+                done = [f for f in done if os.path.basename(f) == expected_filename]
+            if done:
+                filepath = done[0]
+                size1 = os.path.getsize(filepath)
+                time.sleep(0.2)
+                size2 = os.path.getsize(filepath)
+                if size1 == size2 and size1 > 0:
+                    with open(filepath, "rb") as f:
+                        content = f.read()
+                    return os.path.basename(filepath), content
+            time.sleep(0.5)
+        return None, None
+
+    def cleanup_download_dir(self, delete_dir=False):
+        """Clear the contents of the temp download directory.
+        If delete_dir is True, also remove the directory itself.
+        """
+        import os
+        import shutil
+
+        if hasattr(self, "download_dir") and self.download_dir:
+            try:
+                for entry in os.scandir(self.download_dir):
+                    if entry.is_dir(follow_symlinks=False):
+                        shutil.rmtree(entry.path)
+                    else:
+                        os.remove(entry.path)
+                if delete_dir:
+                    os.rmdir(self.download_dir)
+            except Exception:
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    "Failed to cleanup payment receipt download directory: {}".format(
+                        self.download_dir
+                    ),
+                )
 
 
 class AnyEC:

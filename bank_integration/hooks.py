@@ -20,6 +20,10 @@ doctype_js = {
     "Bank Reconciliation Tool": "scripts/bank_reconciliation_tool.js"
 }
 
+doctype_list_js = {
+    "Payment Entry": "scripts/payment_entry_list.js",
+}
+
 page_js = {
     "bank-reconciliation": "scripts/bank_reconciliation.js",
 }
