@@ -295,33 +295,6 @@ class HDFCBankAPI(BankAPI):
         """)
         if submit_btn:
             self.br.execute_script("arguments[0].click();", submit_btn)
-            incorrect_otp_xpath = "//span[contains(@class,'text-danger') and contains(normalize-space(),'You have entered incorrect OTP.')]"
-            invalid_otp_length_xpath = "//span[contains(@class,'d-flex') and not(contains(@class,'d-none')) and contains(@class,'text-danger') and contains(normalize-space(),'Please enter the 6-digit OTP')]"
-            login_success_xpath = "//h1[@data-role='headings' and contains(@class,'bb-heading-widget__heading')]"
-            self.wait_until(
-                AnyEC(
-                    EC.visibility_of_element_located((By.XPATH, incorrect_otp_xpath)),
-                    EC.visibility_of_element_located(
-                        (By.XPATH, invalid_otp_length_xpath)
-                    ),
-                    EC.visibility_of_element_located((By.XPATH, login_success_xpath)),
-                    EC.visibility_of_element_located((By.CSS_SELECTOR,"span.success-tick"))
-                ),
-                throw="ignore",
-                timeout=5,
-            )
-
-            found = self.br._found_element
-
-            if found:
-                if found[-1] == invalid_otp_length_xpath:
-                    self.throw(
-                        "Please enter a 6-digit OTP. Please start the payment process again"
-                    )
-                elif found[-1] == incorrect_otp_xpath:
-                    self.throw(
-                        "You have entered an incorrect otp. Please start the payment process again"
-                    )
         else:
             self.throw("Could not find OTP Submit button.", screenshot=True)
 
