@@ -34,7 +34,14 @@ bi.listenForOtp = function (frm,is_bulk=false) {
 					docname: frm?.doc?.name || null,
 					logged_in: data.logged_in},
 			});
-			frappe.msgprint("Verifying OTP!!")
+			if(frm.doctype == 'Bank Reconciliation Tool' || frm.doctype == 'Bank Account'){
+				frappe.show_alert({
+					message: "Verifying OTP!!",
+					indicator: "green"
+				},5)
+			}else{
+				frappe.msgprint("Verifying OTP!!")
+			}
 			delete frm.otp_requested;
 		}, 'Enter OTP');
 

@@ -3,10 +3,10 @@
 # For license information, please see license.txt
 
 import time
-
+from datetime import datetime, timedelta
 import frappe
 import hashlib
-from frappe.utils import getdate, today, add_months, add_days, flt
+from frappe.utils import getdate, add_days, flt
 from frappe.utils.file_manager import save_file
 
 from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
@@ -388,7 +388,9 @@ class HDFCBankAPI(BankAPI):
         elif self.doctype == "Payment Entry":
             self.show_msg("Login Successful! Processing payment..")
             self.make_payment()
-        elif self.doctype == "Bank Account":
+        elif (
+            self.doctype == "Bank Account" or self.doctype == "Bank Reconciliation Tool"
+        ):
             self.fetch_transactions()
 
     def logout(self):
@@ -705,6 +707,97 @@ class HDFCBankAPI(BankAPI):
         confirm_btn.click()
         self._handle_post_confirm_payment_state()
 
+    def _estimate_wait_time(self):
+        """Estimate wait time in minutes based on the date range."""
+        from_date = datetime.strptime(self.data.from_date, "%Y-%m-%d")
+        to_date = datetime.strptime(self.data.to_date, "%Y-%m-%d")
+        days = (to_date - from_date).days
+
+        if days <= 90:
+            return 1
+        elif days <= 365:
+            return 2
+        else:
+            return 5
+
+    def _click_statement_download(self, from_date_ui, to_date_ui):
+        """Find the statement row matching the date range in the recent downloads
+        table and click its download button. Returns True if found, False otherwise."""
+        container_xpath = "(//bb-collapsible-ui)[2]"
+
+        is_open = (
+            len(
+                self.br.find_elements(
+                    By.XPATH,
+                    container_xpath
+                    + "//div[contains(@class,'collapse') and contains(@class,'show')]",
+                )
+            )
+            > 0
+        )
+
+        if not is_open:
+            try:
+                collapsable = self.get_element(
+                    "//bb-collapsible-ui[contains(@class,'bb-card--collapsible')]",
+                    "xpath",
+                    timeout=5,
+                    throw="ignore",
+                )
+                if not collapsable:
+                    return False
+                collapsable.click()
+            except Exception:
+                self.br.execute_script("arguments[0].click();", collapsable)
+
+        table = self.get_element(
+            "//bb-collapsible-ui//div[@data-role='bb-collapsible-card-body']"
+            "//table[@aria-label='Account statements table']",
+            "xpath",
+            timeout=5,
+            throw="ignore",
+        )
+        if not table:
+            return False
+
+        self.br.execute_script("arguments[0].scrollIntoView({block: 'center'});", table)
+
+        row_xpath = (
+            ".//tr[.//*[contains(normalize-space(), '{}') "
+            "and contains(normalize-space(), '{}')]]"
+            "[.//*[contains(normalize-space(), 'Delimited')]]"
+        ).format(from_date_ui, to_date_ui)
+
+        rows = table.find_elements(By.XPATH, row_xpath)
+        if not rows:
+            return False
+
+        row = rows[0]
+
+        check_status = row.find_elements(
+            By.XPATH,
+            ".//span[contains(@class,'text-primary') and contains(normalize-space(),'Check Status')]",
+        )
+        if check_status:
+            try:
+                check_status[0].click()
+            except Exception:
+                self.br.execute_script("arguments[0].click();", check_status[0])
+            time.sleep(2)
+
+        file_download_btn = row.find_elements(
+            By.XPATH, ".//button[contains(@class,'download-button')]"
+        )
+        if not file_download_btn:
+            return False
+
+        try:
+            file_download_btn[0].click()
+        except Exception:
+            self.br.execute_script("arguments[0].click();", file_download_btn[0])
+
+        return True
+
     def click_option(
         self, element, to_click, error=None, exact=False, compare_text=False
     ):
@@ -875,160 +968,319 @@ class HDFCBankAPI(BankAPI):
 
         self.logout()
 
-    def fetch_transactions(self, from_date=None):
-        def update_transactions(transactions, after_date, bank_account):
-            trans_ids = frappe.get_all(
-                "Bank Transaction",
-                filters=[
-                    ["creation", ">", add_days(after_date, -1)],
-                    ["bank_account", "=", bank_account],
-                ],
-                fields="transaction_id",
+    def _get_date_chunks(self):
+        """Break self.data.from_date → self.data.to_date into ≤365-day chunks."""
+        from_dt = datetime.strptime(self.data.from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(self.data.to_date, "%Y-%m-%d")
+        chunks = []
+        current = from_dt
+        while current <= to_dt:
+            end = min(current + timedelta(days=364), to_dt)
+            chunks.append((current, end))
+            current = end + timedelta(days=1)
+        return chunks
+
+    def _fetch_chunk(self, from_date_object, to_date_object):
+        """
+        Navigate to the Get Statement page for one date-range chunk.
+        Checks the recent-downloads table first; if not found, requests a
+        fresh Delimited download.  Returns a list of parsed transaction dicts
+        when the file is available, or None when the download is still pending.
+        """
+
+
+        self.br.switch_to.default_content()
+        date_range_selector = self.get_element(
+            "//select[@data-role='dropdown']//option[contains(normalize-space(),'Custom Date')]",
+            "xpath",
+        )
+        date_range_selector.click()
+
+        from_input_date = self.get_element(
+            "//input[@placeholder='From Date' and @data-role='input-date-single']",
+            "xpath",
+        )
+        from_input_date.clear()
+        from_input_date.send_keys(from_date_object.strftime("%d-%m-%Y"), Keys.ENTER)
+        to_input_date = self.get_element(
+            "//input[@placeholder='To Date' and @data-role='input-date-single']",
+            "xpath",
+        )
+        to_input_date.clear()
+        to_input_date.send_keys(to_date_object.strftime("%d-%m-%Y"), Keys.ENTER)
+
+        heading = self.get_element(
+            "//h3[@data-role='headings' and contains(normalize-space(),'Select Account and Statement Period')]",
+            "xpath",
+        )
+        heading.click()
+
+        from_date_ui = from_date_object.strftime("%d %b %Y")
+        to_date_ui = to_date_object.strftime("%d %b %Y")
+
+        elements = self.br.find_elements(
+            By.XPATH,
+            "//bb-aem-notes//p[contains(normalize-space(),'You can only Email statement for selected period')]",
+        )
+        if elements and elements[0].is_displayed():
+            self.throw(
+                "The bank portal is restricting statement downloads for the selected date range. Please reduce the date range and try again."
             )
-            existing_transactions = [item["transaction_id"] for item in trans_ids]
-            count = 0
-            closing_balance = 0
-            for transaction in transactions:
-                for key in ("Withdrawal", "Deposit", "Closing Balance"):
-                    if transaction.get(key):
-                        transaction[key] = flt(transaction[key])
-                transaction["Cheque/Ref. No."] = str(
-                    transaction["Cheque/Ref. No."]
-                ).replace(".0", "")
 
-                transaction_id = hashlib.sha224(str(transaction).encode()).hexdigest()
+        self.cleanup_download_dir(delete_dir=False)
+        if self._click_statement_download(from_date_ui, to_date_ui):
+            filename, content = self.wait_for_download()
+            if filename and content:
+                return self._parse_statement_file(content)
+            return []
 
-                if transaction_id in existing_transactions:
-                    continue
+        file_format_selector = self.get_element(
+            "//select[@data-role='dropdown']//option[normalize-space()='Delimited']",
+            "xpath",
+        )
+        file_format_selector.click()
 
-                bank_transaction = frappe.get_doc({"doctype": "Bank Transaction"})
+        try:
+            download_btn = self.get_element(
+                "//button[contains(@class,'download-button') and normalize-space()='Download']",
+                "xpath",
+            )
+            download_btn.click()
+        except Exception:
+            self.br.execute_script("arguments[0].click();", download_btn)
 
-                bank_transaction.update(
-                    {
-                        "transaction_id": transaction_id,
-                        "date": getdate(transaction["Date"]),
-                        "description": transaction["Narration"],
-                        "withdrawal": flt(transaction["Withdrawal"]),
-                        "deposit": flt(transaction["Deposit"]),
-                        "reference_number": transaction["Cheque/Ref. No."],
-                        "closing_balance": flt(transaction["Closing Balance"]),
-                        "bank_account": bank_account,
-                        "unallocated_amount": abs(
-                            flt(transaction["Deposit"]) - flt(transaction["Withdrawal"])
-                        ),
-                    }
-                )
-                bank_transaction.submit()
-                count += 1
-                closing_balance = flt(transaction["Closing Balance"])
+        if download_dialog_box:=self.get_element("//div[contains(@class,'overlay-detail')][.//div[contains(text(),'Preparing your Statement')]]//button[.//bb-icon-ui[@name='clear']]", "xpath", timeout=5, throw="ignore"):
+            try:
+                download_dialog_box.click()
+            except Exception:
+                self.br.execute_script("arguments[0].click();", download_dialog_box)
 
+        return None 
+
+    def fetch_transactions(self, from_date=None):
+        chunks = self._get_date_chunks()
+        all_transactions = []
+        pending_count = 0
+
+        self.br.switch_to.default_content()
+        get_statement_btn = self.get_element(
+            "//button[@aria-label='Get Statement for Savings Accounts']",
+            "xpath",
+        )
+        try:
+            get_statement_btn.click()
+        except Exception:
+            self.br.execute_script("arguments[0].click();", get_statement_btn)
+
+        for chunk_from, chunk_to in chunks:
+            frappe.publish_realtime(
+                "show_alert",
+                {
+                    "message": "Checking statement for {} to {}...".format(
+                        chunk_from.strftime("%d %b %Y"), chunk_to.strftime("%d %b %Y")
+                    )
+                },
+                user=frappe.session.user,
+            )
+            result = self._fetch_chunk(chunk_from, chunk_to)
+            if result is not None:
+                all_transactions.extend(result)
+            else:
+                pending_count += 1
+
+        if all_transactions and pending_count == 0:
+            all_transactions.sort(key=lambda t: t["date"])
+            count = self._create_bank_transactions(all_transactions)
             frappe.publish_realtime(
                 "sync_transactions",
                 {
                     "uid": self.uid,
                     "count": count,
-                    "closing_balance": closing_balance,
-                    "after_date": add_days(after_date, -1),
+                    "closing_balance": flt(
+                        all_transactions[-1].get("closing_balance", 0)
+                    ),
+                    "after_date": self.data.from_date,
                 },
                 user=frappe.session.user,
             )
 
-        self.switch_to_frame("main_part")
-        self.switch_to_frame("left_menu")
-        self.get_element("enquiryatag", selector_type="id", now=True).click()
-        self.get_element("SIN_nohref", selector_type="id", now=True).click()
+        if pending_count:
+            wait_minutes = self._estimate_wait_time()
+            frappe.publish_realtime(
+                "show_alert",
+                {
+                    "message": (
+                        "Statement generation requested for {} period{}. "
+                        "Please click <b>Sync Transactions</b> again after ~{} minute{}.".format(
+                            pending_count,
+                            "s" if pending_count > 1 else "",
+                            wait_minutes,
+                            "s" if wait_minutes > 1 else "",
+                        )
+                    )
+                },
+                user=frappe.session.user,
+            )
 
-        self.switch_to_frame("main_part")
-        self.get_element("selectselAccttype0", "id")
-        self.click_option(
-            self.get_element("selAccttype", now=True),
-            "SCA",
-            "Unable to select Account Type",
+        self.cleanup_download_dir(delete_dir=True)
+        self.logout()
+
+    def _process_downloaded_statement(self):
+        """Wait for the statement file to download, parse it, and create Bank Transactions."""
+        filename, content = self.wait_for_download()
+        if not filename or not content:
+            self.throw("Statement file download timed out.", screenshot=True)
+
+        frappe.publish_realtime(
+            "show_alert",
+            {"message": "Processing the downloaded statement file..."},
+            user=frappe.session.user,
         )
 
-        self.click_option(
-            self.get_element("selAcct", now=True),
-            self.data.from_account_no,
-            "Please verify account number in Bank Integration Settings",
-        )
-
-        prev_valid_date = add_months(add_days(today(), -getdate().day + 1), -1)
-        if not frappe.db.count(
-            "Bank Transaction",
-            filters={
-                "bank_account": self.data.bank_account,
-                "date": [">", prev_valid_date],
-            },
-        ):
-            from_date = prev_valid_date
-        else:
-            from_date = frappe.get_all(
-                "Bank Transaction",
-                filters={"bank_account": self.data.bank_account},
-                fields="date",
-                order_by="creation desc",
-                limit=1,
-            )[0]["date"]
-            if getdate(from_date) <= getdate(prev_valid_date):
-                from_date = prev_valid_date
-            from_date = add_days(from_date, -1)
-
-        self.br.find_elements(By.CLASS_NAME, "radio")[1].click()
-
-        self.get_element("frmDatePicker", selector_type="id", now=True).send_keys(
-            getdate(from_date).strftime("%d/%m/%Y")
-        )
-        self.get_element("toDatePicker", selector_type="id", now=True).send_keys(
-            getdate().strftime("%d/%m/%Y")
-        )
-        self.br.execute_script("return formSubmitbytype()")
-
-        self.br.execute_script("$('.datatable').show()")
-        transaction_tables = self.br.find_elements(By.CLASS_NAME, "datatable")
-
-        if not transaction_tables:
-            self.throw("No New Transactions found")
+        transactions = self._parse_statement_file(content)
+        if not transactions:
+            frappe.publish_realtime(
+                "show_alert",
+                {"message": "No transactions found in the statement file."},
+                user=frappe.session.user,
+            )
+            self.cleanup_download_dir(delete_dir=True)
             self.logout()
             return
 
-        transactions = _get_transactions(transaction_tables)
+        count = self._create_bank_transactions(transactions)
 
+        frappe.publish_realtime(
+            "sync_transactions",
+            {
+                "uid": self.uid,
+                "count": count,
+                "closing_balance": flt(transactions[-1].get("closing_balance", 0)),
+                "after_date": self.data.from_date,
+            },
+            user=frappe.session.user,
+        )
+
+        self.cleanup_download_dir(delete_dir=True)
         self.logout()
 
-        update_transactions(transactions, from_date, self.data.bank_account)
+    def _parse_statement_file(self, content):
+        """Parse the comma-delimited statement file into a list of transaction dicts."""
+        import csv
+        import io
 
+        text = content.decode("utf-8", errors="replace")
+        reader = csv.reader(io.StringIO(text))
+        rows = list(reader)
 
-def _get_transactions(transaction_tables):
-    from bs4 import BeautifulSoup
-
-    transactions = []
-
-    for table_element in transaction_tables:
-        soup = BeautifulSoup(table_element.get_attribute("outerHTML"), "lxml")
-        table = soup.find("table")
-
-        if not table:
-            continue
-
-        rows = table.find_all("tr")
         if not rows:
-            continue
-        # First row is header
-        headers = [th.text.strip() for th in rows[0].find_all("th")]
+            return []
 
-        # Remaining rows are data
-        for row in rows[1:]:
-            cells = row.find_all("td")
+        raw_headers = [h.strip().lower() for h in rows[1]]
 
-            # NOTE: Will not happen right?
-            if len(cells) != len(headers):
-                continue  # Skip incomplete rows
+        header_map = {
+            "date": "date",
+            "narration": "narration",
+            "value dat": "value_date",
+            "value date": "value_date",
+            "debit amount": "debit",
+            "credit amount": "credit",
+            "chq/ref number": "reference_number",
+            "closing balance": "closing_balance",
+        }
 
-            transaction = {
-                header: (cell.text.strip() or 0) for header, cell in zip(headers, cells)
-            }
+        col_map = {}
+        for idx, header in enumerate(raw_headers):
+            for pattern, key in header_map.items():
+                if pattern in header:
+                    col_map[idx] = key
+                    break
 
-            transactions.append(transaction)
+        if "date" not in col_map.values():
+            return []
 
-    transactions.reverse()  # To maintain chronological order
-    return transactions
+        transactions = []
+        for row in rows[2:]:
+            if not row or all(not cell.strip() for cell in row):
+                continue
+
+            txn = {}
+            for idx, key in col_map.items():
+                if idx < len(row):
+                    txn[key] = row[idx].strip()
+
+            if not txn.get("date"):
+                continue
+
+            try:
+                txn["date"] = datetime.strptime(txn["date"], "%d/%m/%y").strftime(
+                    "%Y-%m-%d"
+                )
+            except ValueError:
+                try:
+                    txn["date"] = datetime.strptime(txn["date"], "%d/%m/%Y").strftime(
+                        "%Y-%m-%d"
+                    )
+                except ValueError:
+                    continue
+
+            txn["debit"] = flt(txn.get("debit", 0))
+            txn["credit"] = flt(txn.get("credit", 0))
+            txn["closing_balance"] = flt(txn.get("closing_balance", 0))
+            txn["reference_number"] = str(txn.get("reference_number", "")).replace(
+                ".0", ""
+            )
+            txn["narration"] = txn.get("narration", "")
+
+            transactions.append(txn)
+
+        return transactions
+
+    def _create_bank_transactions(self, transactions):
+        """Create Bank Transaction documents, skipping duplicates."""
+        bank_account = self.data.bank_account
+        frappe.publish_realtime(
+            "show_alert",
+            {"message": "Creating Bank Transactions..."},
+            user=frappe.session.user,
+        )
+        existing_ids = set(
+            item["transaction_id"]
+            for item in frappe.get_all(
+                "Bank Transaction",
+                filters={"bank_account": bank_account},
+                fields="transaction_id",
+            )
+        )
+
+        count = 0
+        for txn in transactions:
+            hash_str = "{date}{narration}{debit}{credit}{closing_balance}{reference_number}".format(
+                **txn
+            )
+            transaction_id = hashlib.sha224(hash_str.encode()).hexdigest()
+
+            if transaction_id in existing_ids:
+                continue
+
+            bank_transaction = frappe.get_doc({"doctype": "Bank Transaction"})
+            bank_transaction.update(
+                {
+                    "transaction_id": transaction_id,
+                    "date": txn["date"],
+                    "description": txn["narration"],
+                    "withdrawal": txn["debit"],
+                    "deposit": txn["credit"],
+                    "reference_number": txn["reference_number"],
+                    "closing_balance": txn["closing_balance"],
+                    "bank_account": bank_account,
+                    "unallocated_amount": abs(txn["credit"] - txn["debit"]),
+                }
+            )
+            bank_transaction.submit()
+            count += 1
+
+            existing_ids.add(transaction_id)
+
+        frappe.db.commit()
+        return count

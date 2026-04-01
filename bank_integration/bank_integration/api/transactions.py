@@ -11,7 +11,7 @@ from bank_integration.bank_integration.api.hdfc_bank_api import HDFCBankAPI
 
 
 @frappe.whitelist()
-def get_transactions(uid, from_account):
+def get_transactions(uid, from_account, from_date=None, to_date=None):
     bi = frappe.get_doc("Bank Integration Settings", from_account)
     account_name = frappe.get_value("Bank Account", from_account, "account_name")
     data = frappe._dict(
@@ -19,6 +19,8 @@ def get_transactions(uid, from_account):
             "bank_account": from_account,
             "from_account": account_name,
             "from_account_no": bi.bank_account_no,
+            "from_date": from_date,
+            "to_date": to_date,
         }
     )
 
