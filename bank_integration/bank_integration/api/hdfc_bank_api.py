@@ -710,15 +710,18 @@ class HDFCBankAPI(BankAPI):
         )
 
         if not is_open:
-            try:
-                collapsable = self.get_element(
-                    "//bb-collapsible-ui[contains(@class,'bb-card--collapsible')]",
-                    "xpath",
-                    timeout=5,
-                    throw="ignore",
+            collapsable = self.get_element(
+                "//bb-collapsible-ui[contains(@class,'bb-card--collapsible')]",
+                "xpath",
+                timeout=5,
+                throw="ignore",
+            )
+            if not collapsable:
+                self.throw(
+                    "Could not find the recent downloads section on the page. The layout of the HDFC portal may have changed.",
+                    screenshot=True,
                 )
-                if not collapsable:
-                    return False
+            try:
                 collapsable.click()
             except Exception:
                 self.br.execute_script("arguments[0].click();", collapsable)
@@ -1012,12 +1015,19 @@ class HDFCBankAPI(BankAPI):
             "xpath",
         )
         file_format_selector.click()
+        
+        download_btn = self.get_element(
+            "//button[contains(@class,'download-button') and normalize-space()='Download']",
+            "xpath",
+            throw="ignore",
+        )
+        if not download_btn:
+            self.throw(
+                "Could not find the Download button for statement download. The HDFC portal layout may have changed.",
+                screenshot=True,
+            )
 
         try:
-            download_btn = self.get_element(
-                "//button[contains(@class,'download-button') and normalize-space()='Download']",
-                "xpath",
-            )
             download_btn.click()
         except Exception:
             self.br.execute_script("arguments[0].click();", download_btn)
@@ -1094,45 +1104,6 @@ class HDFCBankAPI(BankAPI):
                 },
                 user=frappe.session.user,
             )
-
-        self.cleanup_download_dir(delete_dir=True)
-        self.logout()
-
-    def _process_downloaded_statement(self):
-        """Wait for the statement file to download, parse it, and create Bank Transactions."""
-        filename, content = self.wait_for_download()
-        if not filename or not content:
-            self.throw("Statement file download timed out.", screenshot=True)
-
-        frappe.publish_realtime(
-            "show_alert",
-            {"message": "Processing the downloaded statement file..."},
-            user=frappe.session.user,
-        )
-
-        transactions = self._parse_statement_file(content)
-        if not transactions:
-            frappe.publish_realtime(
-                "show_alert",
-                {"message": "No transactions found in the statement file."},
-                user=frappe.session.user,
-            )
-            self.cleanup_download_dir(delete_dir=True)
-            self.logout()
-            return
-
-        count = self._create_bank_transactions(transactions)
-
-        frappe.publish_realtime(
-            "sync_transactions",
-            {
-                "uid": self.uid,
-                "count": count,
-                "closing_balance": flt(transactions[-1].get("closing_balance", 0)),
-                "after_date": self.data.from_date,
-            },
-            user=frappe.session.user,
-        )
 
         self.cleanup_download_dir(delete_dir=True)
         self.logout()

@@ -26,7 +26,6 @@ frappe.ui.form.on("Bank Reconciliation Tool", {
     },
 
     onload: function(frm){
-
         frm.toggle_reqd(["bank_statement_to_date","bank_statement_from_date","bank_account"],1)
         let today = frappe.datetime.get_today();
         let yesterday = frappe.datetime.add_days(today, -1);
