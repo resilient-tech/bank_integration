@@ -9,7 +9,11 @@ import hashlib
 from frappe.utils import getdate, today, add_months, add_days, flt
 from frappe.utils.file_manager import save_file
 
-from bank_integration.bank_integration.api.bank_api import BankAPI, AnyEC
+from bank_integration.bank_integration.api.bank_api import (
+    BankAPI,
+    AnyEC,
+    ElementVisibleByJS,
+)
 
 # Selenium imports
 from selenium.webdriver.support import expected_conditions as EC
@@ -75,7 +79,7 @@ class HDFCBankAPI(BankAPI):
                         )
                     ),
                     EC.visibility_of_element_located((By.ID, "proceedBtn")),
-                    EC.visibility_of_element_located((By.ID, "mfa-get-otp-btn")),
+                    ElementVisibleByJS(By.ID, "mfa-get-otp-btn"),
                     EC.presence_of_element_located((By.TAG_NAME, "bb-retail-layout")),
                     EC.visibility_of_element_located((By.NAME, "fldOldPass")),
                     EC.visibility_of_element_located((By.NAME, "fldAnswer")),
@@ -144,9 +148,12 @@ class HDFCBankAPI(BankAPI):
                 self.handle_login_error()
                 return
 
-        self.handle_login_error()
 
     def process_otp(self):
+        # here it again checks for the otp button in AnyEC because process_otp is used in two flows 
+        # - login flow 
+        # - payment flow
+        # both have different GET OTP button elements present
         try:
             self.wait_until(
                 AnyEC(

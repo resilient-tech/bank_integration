@@ -52,12 +52,14 @@ class BankAPI:
 
         if getattr(self, "init"):
             self.init()
-
-        if resume:
-            self.resume_session()
-        else:
-            self.login()
-
+        try:
+            if resume:
+                self.resume_session()
+            else:
+                self.login()
+        except Exception as e:
+            self.throw("Closing browser session. Unexpected error occurred: {}".format(str(e)))
+            
     def login(self):
         pass
 
@@ -306,6 +308,30 @@ class BankAPI:
                 )
 
 
+class ElementVisibleByJS:
+    """
+    Custom EC that checks actual rendered size via getBoundingClientRect()
+    instead of Selenium's is_displayed(), which can fail for Angular components
+    that use CSS opacity/transforms to show/hide elements that stay in the DOM.
+    Has a .locator attribute so AnyEC._found_element tracking works correctly.
+    """
+
+    def __init__(self, by, value):
+        self.locator = (by, value)
+
+    def __call__(self, driver):
+        els = driver.find_elements(*self.locator)
+        if not els:
+            return False
+        visible = [
+            e
+            for e in els
+            if driver.execute_script(
+                "var r=arguments[0].getBoundingClientRect(); return r.width>0 && r.height>0;",
+                e,
+            )
+        ]
+        return visible[0] if visible else False
 class AnyEC:
     """Use with WebDriverWait to combine expected_conditions
     in an OR.
